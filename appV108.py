@@ -1179,7 +1179,7 @@ def trimite_email_raport(destinatar, subiect, corp_mesaj, pdf_bytes, nume_fisier
 st.sidebar.title("📌 Nexus Control Panel")
 st.sidebar.text("Drive: nexusindustrialsrl@gmail.com")
 
-if st.sidebar.button("🛑 Închide Serverul Python", type="primary"):
+if st.sidebar.button("🛑 Închide Serverul Python", type="primary", key="inchide_server_btn"):
     st.sidebar.warning("Se închide serverul...")
     os._exit(0)
 
