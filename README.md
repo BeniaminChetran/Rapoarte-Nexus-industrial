@@ -1,2 +1,2 @@
 # Rapoarte-Nexus-industrial
-prigramul de introdus rapoarte al nexus industrial
+programul de introdus rapoarte al nexus industrial
