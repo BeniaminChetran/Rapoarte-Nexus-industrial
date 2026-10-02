@@ -3,3 +3,4 @@ reportlab
 pandas
 psycopg2-binary
 supabase
+python-dotenv
