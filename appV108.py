@@ -818,7 +818,8 @@ with tab_setari:
             conn.commit()
             st.success("Setările au fost salvate cu succes!")
             st.rerun()
-    conn.close()import os
+    conn.close()
+import os
 import json
 import sqlite3
 import smtplib
