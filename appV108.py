@@ -232,19 +232,23 @@ def genereaza_pdf(data):
     pdf.set_font('Helvetica', '', 8)
     pdf.set_text_color(*SECONDARY)
     pdf.cell(0, 4, curata_text(f"Adresă: {adresa_emitent} | Bancă: {banca_emitent} | IBAN: {iban_emitent} | SWIFT: {swep_emitent}"), 0, 1, 'L')
+    
+    # Adăugat spațiu liber suplimentar (ln) pentru a evita suprapunerea
     pdf.ln(6)
 
     pdf.set_font('Helvetica', 'B', 11)
     pdf.set_text_color(*PRIMARY)
     pdf.cell(100, 7, curata_text(f"Nr. Inregistrare: #{data['id']}"), 0, 0)
     pdf.cell(90, 7, curata_text(f"Data: {str(data['data'])[:10]}"), 0, 1, 'R')
+    
+    # Coborât linia de delimitare corespunzător noului spațiu
     pdf.line(10, pdf.get_y() + 2, 200, pdf.get_y() + 2)
     pdf.ln(6)
 
     pdf.set_fill_color(*BG_LIGHT)
-    pdf.rect(10, 45, 190, 32, 'F')
+    pdf.rect(10, pdf.get_y(), 190, 32, 'F')
     
-    pdf.set_xy(12, 47)
+    pdf.set_xy(12, pdf.get_y() + 2)
     pdf.set_font('Helvetica', 'B', 10)
     pdf.set_text_color(*PRIMARY)
     pdf.cell(90, 6, curata_text("DETALII CLIENT"), 0, 0)
@@ -267,6 +271,7 @@ def genereaza_pdf(data):
     pdf.cell(90, 5, curata_text(f"Stare Finala: {data['stare_finala']}"), 0, 1)
     
     pdf.ln(8)
+    # Restul funcției rămâne neschimbat...
 
     def adauga_sectiune(titlu, continut):
         pdf.set_font('Helvetica', 'B', 10)
