@@ -797,9 +797,17 @@ with tab_deviz:
         if "randuri_deviz" not in st.session_state:
             st.session_state["randuri_deviz"] = [{"piesa": "", "cantitate": 1, "pret_iesire": 0.0}]
             
-        c.execute("SELECT denumire, pret_iesire FROM piese")
+        # Preluare denumire, preț ieșire și preț achiziție din baza de date pentru siguranță
+        c.execute("SELECT denumire, pret_iesire, pret_achizitie, pret_intrare FROM piese")
         catalog_piese_raw = c.fetchall()
-        catalog_piese_dict = {row[0]: row[1] for row in catalog_piese_raw}
+        
+        # Dicționar pentru preț: luăm pret_iesire, iar dacă este 0, încercăm pret_achizitie sau pret_intrare
+        catalog_piese_dict = {}
+        for row in catalog_piese_raw:
+            p_den_db = row[0]
+            p_pret_db = row[1] if row[1] and row[1] > 0 else (row[2] if row[2] and row[2] > 0 else (row[3] if row[3] and row[3] > 0 else 0.0))
+            catalog_piese_dict[p_den_db] = p_pret_db
+            
         catalog_nume_piese = list(catalog_piese_dict.keys())
         
         for idx, rd in enumerate(st.session_state["randuri_deviz"]):
@@ -813,7 +821,10 @@ with tab_deviz:
             with cols_d[1]:
                 st.session_state["randuri_deviz"][idx]["cantitate"] = st.number_input("Cant.", min_value=1, value=rd["cantitate"], key=f"d_cant_{idx}")
             with cols_d[2]:
-                st.session_state["randuri_deviz"][idx]["pret_iesire"] = st.number_input("Preț Unitar", value=float(rd["pret_iesire"]), key=f"d_pret_{idx}")
+                # Actualizează câmpul de preț unitar preluat direct din baza de date sau lăsat editabil
+                p_curenta = st.session_state["randuri_deviz"][idx]["piesa"]
+                pret_def_db = catalog_piese_dict.get(p_curenta, rd["pret_iesire"]) if p_curenta != "Selectează..." else rd["pret_iesire"]
+                st.session_state["randuri_deviz"][idx]["pret_iesire"] = st.number_input("Preț Unitar", value=float(pret_def_db), key=f"d_pret_{idx}")
             with cols_d[3]:
                 val_total_linie_ron = st.session_state["randuri_deviz"][idx]["cantitate"] * st.session_state["randuri_deviz"][idx]["pret_iesire"] * curs_bnr_val
                 st.metric("Preț (LEI)", f"{val_total_linie_ron:.2f}")
@@ -1168,7 +1179,7 @@ with tab_setari:
     current_setari = c.fetchone()
     
     with st.form("form_setari"):
-        s_nume = st.text_input("Nume Firma Ta", value=current_setari[0] if current_setari else "Nexus Industrial SRL")
+        s_nume = st.text_input("Nume Firma Ta", value=current_setari[0] if current_settari and current_setari[0] else "Nexus Industrial SRL")
         s_cui = st.text_input("CUI", value=current_setari[1] if current_setari else "")
         s_reg = st.text_input("Nr. Reg. Com.", value=current_setari[2] if current_setari else "")
         s_adresa = st.text_input("Adresă", value=current_setari[3] if current_setari else "")
