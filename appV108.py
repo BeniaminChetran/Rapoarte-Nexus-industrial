@@ -176,7 +176,7 @@ def init_db():
         c.execute("""
             INSERT INTO setari (nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician, tva, pass)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, ("Nexus Industrial SRL", "", "", "", "", "", "", "smtp.gmail.com", 587, "", "", "", "", 19.0, "nexus123"))
+        """, ("Nexus Industrial SRL", "", "", "", "", "", "", "smtp.gmail.com", 587, "", "", "", "", 21.0, "nexus123"))
     
     conn.commit()
     conn.close()
@@ -191,7 +191,7 @@ def get_setari():
     conn.close()
     if res:
         return res
-    return ("Nexus Industrial SRL", "", "", "", "", "", "", "smtp.gmail.com", 587, "", "", "", 19.0, "nexus123")
+    return ("Nexus Industrial SRL", "", "", "", "", "", "", "smtp.gmail.com", 587, "", "", "", 21.0, "nexus123")
 
 # ------------------------------------------------------------------------------
 # 3. Clasă Generare PDF Profesionist (Deviz, Oferta de pret, Raport)
@@ -1088,7 +1088,7 @@ with tab_setari:
         s_email_teh = st.text_input("E-mail Tehnician", value=current_setari[12] if current_setari and len(current_setari) > 12 and current_setari[12] else "")
         
         # Preluare sigură pentru TVA (indexul 13)
-        val_tva_init = 19.0
+        val_tva_init = 21.0
         if current_setari and len(current_setari) > 13 and current_setari[13] is not None:
             try:
                 val_tva_init = float(current_setari[13])
