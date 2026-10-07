@@ -3,6 +3,11 @@
 #functional in github appV108.py
 #-----------------------------------------------------------------------------------
 
+#-----------------------------------------------------------------------------------
+# APLICATIE STREAMLIT OPTIMIZATĂ PENTRU SUPABASE (POSTGRESQL)
+# functional in github appV108.py
+#-----------------------------------------------------------------------------------
+
 import os
 import json
 import smtplib
@@ -34,7 +39,7 @@ def get_db_connection():
 # 1. Configurare Pagină & Stil UI (Optimizat și pentru Mobil)
 # ------------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Nexus Industrial - Sistem Mentenanță",
+    page_title="NexInd",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -84,7 +89,7 @@ def init_db():
         )
     ''')
     
-    # 3. Tabel Piese de Schimb
+    # 3. Tabel Piese de Schimb (S-a scos prețul de achiziție)
     c.execute('''
         CREATE TABLE IF NOT EXISTS piese (
             id SERIAL PRIMARY KEY,
@@ -92,8 +97,7 @@ def init_db():
             cod_producator TEXT,
             cod_comercial TEXT,
             masina_montaj TEXT,
-            subansamblu TEXT,
-            pret_achizitie REAL
+            subansamblu TEXT
         )
     ''')
     
@@ -393,14 +397,16 @@ def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume
 st.sidebar.title("📌 Nexus Control Panel")
 st.sidebar.text("Sistem integrat activ")
 
-if st.sidebar.button("🛑 Închide Serverul Python", type="primary", key="inchide_server_btn"):
+# Buton actualizat: "Închide aplicația"
+if st.sidebar.button("🛑 Închide aplicația", type="primary", key="inchide_server_btn"):
     st.sidebar.warning("Se închide serverul...")
     os._exit(0)
 
 st.sidebar.markdown("---")
 st.sidebar.info("Aplicație optimizată pentru mobil și desktop.")
 
-st.title("🛠️ Sistem Integrat de Mentenanță - Nexus Industrial (Supabase)")
+# Titlu principal actualizat la "NexInd"
+st.title("🛠️ NexInd")
 
 tab_activitati, tab_optimizare, tab_masini, tab_piese, tab_firme, tab_rapoarte, tab_setari = st.tabs([
     "📝 1. Activități", 
@@ -716,7 +722,7 @@ with tab_activitati:
                 with col_b3:
                     if st.button("📧 Trimite pe Email către Verificator"):
                         subiect = f"Raport de Interventie Tehnica #{rid} - {sel_firma}"
-                        corp = f"Stimate beneficiar ({verificator_nume}),\n\nVă atașăm raportul de intervenție tehnică #{rid} pentru echipamentul {sel_masina}.\n\nEchipa Nexus Industrial"
+                        corp = f"Stimate beneficiar ({verificator_nume}),\n\nVă atașăm raportul de intervenție tehnică #{rid} pentru echipamentul {sel_masina}.\n\nEchipa NexInd"
                         
                         success, msg = trimite_email_raport(email_client_destinatar, subiect, corp, pdf_bytes, f"Raport_{rid}.pdf")
                         if success:
@@ -802,7 +808,7 @@ with tab_optimizare:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 4: Tabelul de Piese
+# TAB 4: Tabelul de Piese (Prețul de achiziție a fost scos)
 # ------------------------------------------------------------------------------
 with tab_piese:
     st.subheader("🔧 Gestiune Piese de Schimb")
@@ -820,15 +826,14 @@ with tab_piese:
         with c2:
             p_masini_alese = st.multiselect("Mașinile pe care se montează", options=masini_existente)
             p_sub = st.text_input("Subansamblu")
-            p_pret = st.number_input("Preț Achiziție (RON)", min_value=0.0, value=0.0)
             
         if st.form_submit_button("💾 Salvează Piesa"):
             if p_denumire:
                 masini_text_str = ", ".join(p_masini_alese) if p_masini_alese else "General"
                 c.execute("""
-                    INSERT INTO piese (denumire, cod_producator, cod_comercial, masina_montaj, subansamblu, pret_achizitie)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                """, (p_denumire, p_cod_prod, p_cod_com, masini_text_str, p_sub, p_pret))
+                    INSERT INTO piese (denumire, cod_producator, cod_comercial, masina_montaj, subansamblu)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (p_denumire, p_cod_prod, p_cod_com, masini_text_str, p_sub))
                 conn.commit()
                 st.success(f"Piesa **{p_denumire}** a fost salvată în Supabase!")
                 st.rerun()
