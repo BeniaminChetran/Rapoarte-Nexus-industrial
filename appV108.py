@@ -695,7 +695,10 @@ with tab_deviz:
         
         # Preluare TVA din setări
         setari_val = get_setari()
-        tva_setat = setari_val[14] if len(setari_val) > 14 and setari_val[14] is not None else 19.0
+        try:
+            tva_setat = float(setari_val[14]) if len(setari_val) > 14 and setari_val[14] is not None else 21.0
+        except (ValueError, TypeError):
+            tva_setat = 21.0
         
         st.markdown("##### 🛒 Selectare Piese / Servicii pentru Deviz")
         if "randuri_deviz" not in st.session_state:
