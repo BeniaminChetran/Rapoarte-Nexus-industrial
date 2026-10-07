@@ -232,14 +232,14 @@ def genereaza_pdf(data):
     pdf.set_font('Helvetica', '', 8)
     pdf.set_text_color(*SECONDARY)
     pdf.cell(0, 4, curata_text(f"Adresă: {adresa_emitent} | Bancă: {banca_emitent} | IBAN: {iban_emitent} | SWIFT: {swep_emitent}"), 0, 1, 'L')
-    pdf.ln(2)
+    pdf.ln(6)
 
     pdf.set_font('Helvetica', 'B', 11)
     pdf.set_text_color(*PRIMARY)
     pdf.cell(100, 7, curata_text(f"Nr. Inregistrare: #{data['id']}"), 0, 0)
     pdf.cell(90, 7, curata_text(f"Data: {str(data['data'])[:10]}"), 0, 1, 'R')
-    pdf.line(10, 42, 200, 42)
-    pdf.ln(3)
+    pdf.line(10, pdf.get_y() + 2, 200, pdf.get_y() + 2)
+    pdf.ln(6)
 
     pdf.set_fill_color(*BG_LIGHT)
     pdf.rect(10, 45, 190, 32, 'F')
