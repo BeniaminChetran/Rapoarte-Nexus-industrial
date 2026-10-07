@@ -17,7 +17,7 @@ import psycopg2.extras
 load_dotenv()
 
 def get_db_connection():
-    db_url = st.secrets.get("DATABASE_URL", "postgresql://postgres:PAROLA_TA@db.PROIECT_ID.supabase.co:5432/postgres")
+    db_url = st.secrets.get("DATABASE_URL", "postgresql://postgres:[Rapoarte.100!!]@db.bsuhnbtdysxgdcgfnbzp.supabase.co:5432/postgres")
     try:
         conn = psycopg2.connect(db_url)
         return conn
