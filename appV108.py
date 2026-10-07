@@ -1093,7 +1093,7 @@ with tab_setari:
             try:
                 val_tva_init = float(current_setari[13])
             except (ValueError, TypeError):
-                val_tva_init = 19.0
+                val_tva_init = 21.0
         s_tva = st.number_input("TVA (%)", min_value=0.0, value=val_tva_init)
         
         # Preluare sigură pentru parolă (indexul 14)
