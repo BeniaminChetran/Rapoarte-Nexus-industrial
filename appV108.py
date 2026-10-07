@@ -640,7 +640,7 @@ with tab_piese:
             p_sub = st.text_input("Subansamblu")
         with c2:
             p_masini_alese = st.multiselect("Mașinile pe care se montează", options=masini_existente)
-            p_pret = st.number_input("Preț Achiziție (RON)", min_value=0.0, value=0.0)
+            p_pret = st.number_input("Preț (RON)", min_value=0.0, value=0.0)
             p_intrare = st.number_input("Preț Intrare", min_value=0.0, value=0.0) if st.session_state["acces_piese_fin"] else 0.0
             p_iesire = st.number_input("Preț Ieșire", min_value=0.0, value=0.0) if st.session_state["acces_piese_fin"] else 0.0
             p_adcom = st.number_input("Ad. Com. (Adaos Comercial %)", min_value=0.0, value=0.0) if st.session_state["acces_piese_fin"] else 0.0
