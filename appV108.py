@@ -301,7 +301,7 @@ def genereaza_pdf(data, titlu_doc="RAPORT DE INTERVENTIE TEHNICA"):
         pdf.cell(80, 6, curata_text("Denumire Piesă / Serviciu"), 1, 0, 'C', fill=True)
         pdf.cell(25, 6, curata_text("Cantitate"), 1, 0, 'C', fill=True)
         pdf.cell(40, 6, curata_text("Preț Unitar (LEI)"), 1, 0, 'C', fill=True)
-        pdf.cell(45, 6, curata_text("Valoare (LEI)"), 1, 1, 'C', fill=True)
+        pdf.cell(45, 6, curata_text("Preț (LEI)"), 1, 1, 'C', fill=True)
         
         pdf.set_font('Helvetica', '', 9)
         piese_list = data.get('piese_json', [])
@@ -327,11 +327,11 @@ def genereaza_pdf(data, titlu_doc="RAPORT DE INTERVENTIE TEHNICA"):
         total_general = subtotal_val + val_tva
         
         pdf.set_font('Helvetica', 'B', 9)
-        pdf.cell(145, 6, curata_text("Subtotal (LEI):"), 1, 0, 'R')
+        pdf.cell(145, 6, curata_text("1. Subtotal (LEI):"), 1, 0, 'R')
         pdf.cell(45, 6, f"{subtotal_val:.2f}", 1, 1, 'R')
-        pdf.cell(145, 6, curata_text(f"TVA ({tva_procent}%):"), 1, 0, 'R')
+        pdf.cell(145, 6, curata_text(f"2. TVA ({tva_procent}%):"), 1, 0, 'R')
         pdf.cell(45, 6, f"{val_tva:.2f}", 1, 1, 'R')
-        pdf.cell(145, 6, curata_text("TOTAL GENERAL CU TVA (LEI):"), 1, 0, 'R')
+        pdf.cell(145, 6, curata_text("TOTAL (1+2) (LEI):"), 1, 0, 'R')
         pdf.cell(45, 6, f"{total_general:.2f}", 1, 1, 'R')
         pdf.ln(6)
         
@@ -805,16 +805,18 @@ with tab_deviz:
         for idx, rd in enumerate(st.session_state["randuri_deviz"]):
             cols_d = st.columns([3, 1, 2, 2, 1])
             with cols_d[0]:
-                st.session_state["randuri_deviz"][idx]["piesa"] = st.selectbox(f"Piesă/Serviciu #{idx+1}", options=["Selectează..."] + catalog_nume_piese, key=f"d_sel_{idx}")
+                p_selectata_nou = st.selectbox(f"Piesă/Serviciu #{idx+1}", options=["Selectează..."] + catalog_nume_piese, key=f"d_sel_{idx}")
+                if p_selectata_nou != st.session_state["randuri_deviz"][idx]["piesa"]:
+                    st.session_state["randuri_deviz"][idx]["piesa"] = p_selectata_nou
+                    if p_selectata_nou != "Selectează...":
+                        st.session_state["randuri_deviz"][idx]["pret_iesire"] = float(catalog_piese_dict.get(p_selectata_nou, 0.0))
             with cols_d[1]:
                 st.session_state["randuri_deviz"][idx]["cantitate"] = st.number_input("Cant.", min_value=1, value=rd["cantitate"], key=f"d_cant_{idx}")
             with cols_d[2]:
-                p_curenta = st.session_state["randuri_deviz"][idx]["piesa"]
-                pret_def = catalog_piese_dict.get(p_curenta, 0.0) if p_curenta != "Selectează..." else 0.0
-                st.session_state["randuri_deviz"][idx]["pret_iesire"] = st.number_input("Preț Unitar", value=float(pret_def), key=f"d_pret_{idx}")
+                st.session_state["randuri_deviz"][idx]["pret_iesire"] = st.number_input("Preț Unitar", value=float(rd["pret_iesire"]), key=f"d_pret_{idx}")
             with cols_d[3]:
                 val_total_linie_ron = st.session_state["randuri_deviz"][idx]["cantitate"] * st.session_state["randuri_deviz"][idx]["pret_iesire"] * curs_bnr_val
-                st.metric("Total Linie", f"{val_total_linie_ron:.2f} LEI")
+                st.metric("Preț (LEI)", f"{val_total_linie_ron:.2f}")
             with cols_d[4]:
                 if st.button("❌ Șterg", key=f"del_d_{idx}"):
                     st.session_state["randuri_deviz"].pop(idx)
@@ -829,7 +831,7 @@ with tab_deviz:
         tva_deviz = subtotal_deviz_ron * (tva_setat / 100.0)
         total_cu_tva_deviz = subtotal_deviz_ron + tva_deviz
         
-        st.markdown(f"### 💶 Sumar Financiar (LEI): Subtotal: **{subtotal_deviz_ron:.2f} LEI** | TVA ({tva_setat}%): **{tva_deviz:.2f} LEI** | Total cu TVA: **{total_cu_tva_deviz:.2f} LEI**")
+        st.markdown(f"### 💶 Sumar Financiar (LEI):\n1. Subtotal: **{subtotal_deviz_ron:.2f} LEI**\n2. TVA ({tva_setat}%): **{tva_deviz:.2f} LEI**\nTotal (1+2): **{total_cu_tva_deviz:.2f} LEI**")
         
         data_curenta_str = datetime.now().strftime("%d.%m.%Y")
         default_memo = (
