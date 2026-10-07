@@ -1104,7 +1104,7 @@ with tab_setari:
         s_adresa = st.text_input("Adresă", value=current_setari[3] if current_setari else "")
         s_banca = st.text_input("Bancă", value=current_setari[4] if current_setari else "")
         s_iban = st.text_input("IBAN (Cont)", value=current_setari[5] if current_setari else "")
-        s_swep = st.text_input("SWEP (SWIFT)", value=current_setari[6] if current_setari else "")
+        s_swep = st.text_input("SWIFT", value=current_setari[6] if current_setari else "")
         s_srv = st.text_input("SMTP Server", value=current_setari[7] if current_setari else "smtp.gmail.com")
         s_prt = st.number_input("SMTP Port", value=int(current_setari[8]) if current_setari and current_setari[8] else 587)
         s_usr = st.text_input("User Gmail", value=current_setari[9] if current_setari else "")
