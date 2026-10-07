@@ -600,7 +600,7 @@ with tab_masini:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 4: Tabelul de Piese (Optimizat 10.000+ piese & Secțiune Avansată la Final)
+# TAB 4: Tabelul de Piese (Optimizat 10.000+ piese & Calcul Instantaneu Preț Vânzare)
 # ------------------------------------------------------------------------------
 with tab_piese:
     st.subheader("🔧 Gestiune Piese de Schimb")
@@ -616,7 +616,7 @@ with tab_piese:
     setari_actuale = get_setari()
     curs_bnr_val = float(setari_actuale[15]) if len(setari_actuale) > 15 and setari_actuale[15] is not None else 4.97
     
-    # 1. Formular Adăugare Piesă Nouă
+    # 1. Formular Adăugare Piesă Nouă (cu calcul instant preț vânzare)
     with st.form("form_piese_noua_calcul", clear_on_submit=True):
         st.markdown("##### ➕ Adaugă Piesă Nouă")
         c1, c2 = st.columns(2)
@@ -628,16 +628,13 @@ with tab_piese:
         with c2:
             p_masini_alese = st.multiselect("Mașinile pe care se montează", options=masini_existente)
             
-            # Dacă secțiunea avansată este deblocată, permitem introducerea prețului de intrare și adaosului comercial
             if st.session_state["acces_piese_fin"]:
-                p_intrare = st.number_input("Preț Intrare / Achiziție (EUR)", min_value=0.0, value=0.0, key="p_intrare_form")
-                p_adcom = st.number_input("Ad. Com. (Adaos Comercial %)", min_value=0.0, value=0.0, key="p_adcom_form")
+                p_intrare = st.number_input("Preț Intrare / Achiziție (EUR)", min_value=0.0, value=0.0, key="p_intrare_form", on_change=st.rerun)
+                p_adcom = st.number_input("Ad. Com. (Adaos Comercial %)", min_value=0.0, value=0.0, key="p_adcom_form", on_change=st.rerun)
                 
-                if p_adcom > 0:
-                    p_iesire = p_intrare * (1 + p_adcom / 100.0)
-                    st.info(f"💡 Preț Vânzare calculat automat prin adaos: **{p_iesire:.2f} EUR**")
-                else:
-                    p_iesire = st.number_input("Preț Vânzare (EUR) - Manual", min_value=0.0, value=0.0, key="p_iesire_form")
+                # Calcul instant preț vânzare
+                p_iesire = p_intrare * (1 + p_adcom / 100.0)
+                st.info(f"🔒 Preț Vânzare (calculat automat instantaneu și blocat): **{p_iesire:.2f} EUR**")
             else:
                 p_intrare = 0.0
                 p_adcom = 0.0
@@ -676,7 +673,6 @@ with tab_piese:
     if termen_cautare_piese.strip() and piese_gasite:
         st.markdown(f"Rezultate găsite: **{len(piese_gasite)}** piese.")
         
-        # Selectăm o piesă din rezultate pentru vizualizare sau modificare punctuală
         opțiuni_select_piesa = {f"ID: {p[0]} | {p[1]} (Cod Prod: {p[2] or 'N/A'})": p[0] for p in piese_gasite}
         piesa_selectata_label = st.selectbox("Selectează piesa dorită din lista de rezultate:", options=list(opțiuni_select_piesa.keys()), key="select_piesa_rezult")
         
@@ -700,14 +696,12 @@ with tab_piese:
                     mp_mmas = st.text_input("Mașină Montaj", value=p_mmas or "", key=f"mp_mm_{pid}")
                     mp_sub = st.text_input("Subansamblu", value=p_subans or "", key=f"mp_sub_{pid}")
                     
-                    mp_intrare = st.number_input("Preț Intrare / Achiziție (EUR)", value=float(p_pretintrav or 0.0), key=f"mp_int_{pid}")
-                    mp_adcom = st.number_input("Adaos Comercial (%)", value=float(p_adcomval or 0.0), key=f"mp_adc_{pid}")
+                    mp_intrare = st.number_input("Preț Intrare / Achiziție (EUR)", value=float(p_pretintrav or 0.0), key=f"mp_int_{pid}", on_change=st.rerun)
+                    mp_adcom = st.number_input("Adaos Comercial (%)", value=float(p_adcomval or 0.0), key=f"mp_adc_{pid}", on_change=st.rerun)
                     
-                    if mp_adcom > 0:
-                        mp_iesire = mp_intrare * (1 + mp_adcom / 100.0)
-                        st.info(f"🔒 Preț Vânzare blocat (calculat automat din adaos): **{mp_iesire:.2f} EUR**")
-                    else:
-                        mp_iesire = st.number_input("Preț Vânzare (EUR)", value=float(p_preties or 0.0), key=f"mp_ies_{pid}")
+                    # Preț vânzare calculat instant și blocat la editare manuală directă
+                    mp_iesire = mp_intrare * (1 + mp_adcom / 100.0)
+                    st.info(f"🔒 Preț Vânzare (calculat instantaneu și blocat la editare): **{mp_iesire:.2f} EUR**")
                     
                     col_p1, col_p2 = st.columns(2)
                     with col_p1:
@@ -734,7 +728,7 @@ with tab_piese:
 
     st.markdown("---")
     
-    # 2. Secțiunea Securizată mutatǎ la FINALUL paginii Tab 4
+    # 2. Secțiunea Securizată la FINALUL paginii Tab 4
     st.subheader("🔐 Secțiune Securizată (Deblocare Detalii Avansate & Modificare Piese)")
     with st.expander("🔑 Deblocare Preț de Intrare, Adaos Comercial & Drepturi de Modificare", expanded=not st.session_state["acces_piese_fin"]):
         if not st.session_state["acces_piese_fin"]:
