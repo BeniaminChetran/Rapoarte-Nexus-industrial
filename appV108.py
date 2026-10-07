@@ -801,11 +801,10 @@ with tab_deviz:
         c.execute("SELECT denumire, pret_iesire, pret_achizitie, pret_intrare FROM piese")
         catalog_piese_raw = c.fetchall()
         
-        # Dicționar robust pentru determinarea automată a prețului din orice coloană validă
+        # Dicționar robust pentru prețuri
         catalog_piese_dict = {}
         for row in catalog_piese_raw:
             p_den_db = row[0]
-            # Verifică pe rând coloanele de preț disponibile în baza de date
             p_pret_db = 0.0
             for val_p in [row[1], row[2], row[3]]:
                 if val_p is not None and float(val_p) > 0:
@@ -822,14 +821,15 @@ with tab_deviz:
                 if p_selectata_nou != st.session_state["randuri_deviz"][idx]["piesa"]:
                     st.session_state["randuri_deviz"][idx]["piesa"] = p_selectata_nou
                     if p_selectata_nou != "Selectează...":
-                        # Actualizează direct prețul de ieșire în starea internă corespunzător piesei selectate
-                        st.session_state["randuri_deviz"][idx]["pret_iesire"] = catalog_piese_dict.get(p_selectata_nou, 0.0)
+                        noul_pret = catalog_piese_dict.get(p_selectata_nou, 0.0)
+                        st.session_state["randuri_deviz"][idx]["pret_iesire"] = noul_pret
+                        st.session_state[f"d_pret_{idx}"] = noul_pret
             with cols_d[1]:
                 st.session_state["randuri_deviz"][idx]["cantitate"] = st.number_input("Cant.", min_value=1, value=rd["cantitate"], key=f"d_cant_{idx}")
             with cols_d[2]:
-                # Valoarea prețului unitar preluată din starea curentă a rândului
                 val_pret_curent = st.session_state["randuri_deviz"][idx]["pret_iesire"]
-                st.session_state["randuri_deviz"][idx]["pret_iesire"] = st.number_input("Preț Unitar", value=float(val_pret_curent), key=f"d_pret_{idx}", format="%.2f")
+                pret_introdus = st.number_input("Preț Unitar", value=float(val_pret_curent), key=f"d_pret_{idx}", format="%.2f")
+                st.session_state["randuri_deviz"][idx]["pret_iesire"] = pret_introdus
             with cols_d[3]:
                 val_total_linie_ron = st.session_state["randuri_deviz"][idx]["cantitate"] * st.session_state["randuri_deviz"][idx]["pret_iesire"] * curs_bnr_val
                 st.metric("Preț (LEI)", f"{val_total_linie_ron:.2f}")
