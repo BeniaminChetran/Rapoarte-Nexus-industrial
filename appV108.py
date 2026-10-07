@@ -602,7 +602,7 @@ with tab_masini:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 4: Tabelul de Piese (cu parolă corectă și prețuri în RON)
+# TAB 4: Tabelul de Piese
 # ------------------------------------------------------------------------------
 with tab_piese:
     st.subheader("🔧 Gestiune Piese de Schimb")
@@ -614,7 +614,6 @@ with tab_piese:
     if not st.session_state["acces_piese_fin"]:
         pass_input = st.text_input("Introduceți parola pentru a vizualiza prețurile și detaliile avansate:", type="password", key="pass_input_fin")
         
-        # Preluare explicită a parolei prin interogare directă pe coloana pass
         conn_temp = get_db_connection()
         c_temp = conn_temp.cursor()
         c_temp.execute("SELECT pass FROM setari LIMIT 1")
@@ -655,7 +654,7 @@ with tab_piese:
             p_masini_alese = st.multiselect("Mașinile pe care se montează", options=masini_existente)
             p_pret = st.number_input("Preț Achiziție", min_value=0.0, value=0.0)
             p_intrare = st.number_input("Preț Intrare", min_value=0.0, value=0.0) if st.session_state["acces_piese_fin"] else 0.0
-            p_iesire = st.number_input("Preț Ieșire", min_value=0.0, value=0.0) if st.session_state["acces_piese_fin"] else 0.0
+            p_iesire = st.number_input("Preț Ieșire (Vânzare)", min_value=0.0, value=0.0) if st.session_state["acces_piese_fin"] else 0.0
             p_adcom = st.number_input("Ad. Com. (Adaos Comercial %)", min_value=0.0, value=0.0) if st.session_state["acces_piese_fin"] else 0.0
             p_livrare = st.number_input("Livrare (zile)", min_value=0, value=1) if st.session_state["acces_piese_fin"] else 1
             
@@ -671,8 +670,10 @@ with tab_piese:
                 st.rerun()
     
     st.markdown("---")
-    st.subheader("📋 Catalog Piese Înregistrate (Prețuri afișate în LEI la cursul BNR)")
+    st.subheader("📋 Catalog Piese Înregistrate (Preț de Vânzare în LEI la cursul BNR)")
+    
     if st.session_state["acces_piese_fin"]:
+        # Afișare detaliată cu preț vânzare și detalii financiare complete (deblocat)
         c.execute("SELECT id, denumire, cod_producator, cod_comercial, masina_montaj, pret_intrare, pret_iesire, ad_com, livrare FROM piese")
         piese_db = c.fetchall()
         for p in piese_db:
@@ -680,6 +681,7 @@ with tab_piese:
             pret_intrare_ron = p[5] * curs_bnr_val
             st.write(f"🔧 **{p[1]}** | Cod: {p[2]} | Preț Vânzare: **{pret_iesire_ron:.2f} LEI** | Intrare: {pret_intrare_ron:.2f} LEI | Adaos: {p[7]}% | Livrare: {p[8]} zile")
     else:
+        # Afișare simplă, dar cu PREȚUL DE VÂNZARE vizibil (fără preț de achiziție/intrare)
         c.execute("SELECT denumire, cod_producator, masina_montaj, pret_iesire FROM piese")
         piese_db = c.fetchall()
         for p in piese_db:
