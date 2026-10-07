@@ -148,7 +148,7 @@ def init_db():
     if c.fetchone()[0] == 0:
         default_sheet = "https://script.google.com/macros/s/AKfycbx5bRsK0NGZY2VmlyMS3BqUZzoAiIPwmFMsuLYo10_WQSThN6kgeL3MkugFNvxxTRxbBQ/exec"
         c.execute("""
-            INSERT INTO setari (nume_firma_mea, cui_mea, adresa_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url)
+            INSERT INTO setari (nume_firma, cui, adresa, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """, ("Nexus Industrial SRL", "", "", "smtp.gmail.com", 587, "nexusindustrialsrl@gmail.com", "unjz fjle jljm lrxn", default_sheet))
     
@@ -160,7 +160,7 @@ init_db()
 def get_setari():
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT nume_firma_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url FROM setari LIMIT 1")
+    c.execute("SELECT nume_firma, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url FROM setari LIMIT 1")
     res = c.fetchone()
     conn.close()
     if res:
