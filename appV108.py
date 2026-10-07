@@ -417,7 +417,7 @@ def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume
 st.sidebar.title("📌 Nexus Control Panel")
 st.sidebar.text("Sistem integrat activ")
 
-if st.sidebar.button("🛑 Închide Serverul Python", type="primary", key="inchide_server_btn"):
+if st.sidebar.button("🛑 Închide Serverul Python", type="primary", key="inchide_server_unic_btn"):
     st.sidebar.warning("Se închide serverul...")
     os._exit(0)
 
@@ -600,17 +600,17 @@ with tab_masini:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 4: Tabelul de Piese (Vizualizare, Adăugare și Modificare directă)
+# TAB 4: Tabelul de Piese (Cu Căutare, Filtrare și Editare Rapidă pentru 10.000+ piese)
 # ------------------------------------------------------------------------------
 with tab_piese:
-    st.subheader("🔧 Gestiune Piese de Schimb")
+    st.subheader("🔧 Gestiune Piese de Schimb (Catalog & Filtrare Avansată)")
     
     if "acces_piese_fin" not in st.session_state:
         st.session_state["acces_piese_fin"] = False
         
     with st.expander("🔐 Secțiune securizată (Deblocare prețuri de achiziție / intrări)", expanded=not st.session_state["acces_piese_fin"]):
         if not st.session_state["acces_piese_fin"]:
-            pass_input = st.text_input("Introduceți parola pentru detalii avansate (achiziție/intrare):", type="password", key="pass_input_fin")
+            pass_input = st.text_input("Introduceți parola pentru detalii avansate (achiziție/intrare):", type="password", key="pass_input_fin_piese")
             
             conn_temp = get_db_connection()
             c_temp = conn_temp.cursor()
@@ -619,7 +619,7 @@ with tab_piese:
             conn_temp.close()
             parola_corecta = str(res_pass[0]) if res_pass and res_pass[0] is not None else "nexus123"
             
-            if st.button("Deblocare Secțiune Avansată"):
+            if st.button("Deblocare Secțiune Avansată", key="btn_deblocare_piese_avansate"):
                 if pass_input == parola_corecta:
                     st.session_state["acces_piese_fin"] = True
                     st.success("Acces acordat!")
@@ -628,7 +628,7 @@ with tab_piese:
                     st.error("Parolă incorectă!")
         else:
             st.success("🔒 Secțiunea avansată este deblocată.")
-            if st.button("Blocare Acces"):
+            if st.button("Blocare Acces", key="btn_blocare_piese_avansate"):
                 st.session_state["acces_piese_fin"] = False
                 st.rerun()
 
@@ -641,8 +641,8 @@ with tab_piese:
     curs_bnr_val = float(setari_actuale[15]) if len(setari_actuale) > 15 and setari_actuale[15] is not None else 4.97
     
     # 1. Formular Adăugare Piesă Nouă
-    with st.form("form_piese", clear_on_submit=True):
-        st.markdown("##### ➕ Adaugă Piesă Nouă")
+    with st.form("form_piese_noua_10k", clear_on_submit=True):
+        st.markdown("##### ➕ Adaugă Piesă Nouă în Catalog")
         c1, c2 = st.columns(2)
         with c1:
             p_denumire = st.text_input("Denumire Piesă *")
@@ -674,30 +674,45 @@ with tab_piese:
                 st.rerun()
     
     st.markdown("---")
-    st.subheader("📋 Catalog Piese Înregistrate (Modifică direct în tabel)")
+    st.subheader("🔎 Căutare și Filtrare Rapidă în Catalog (10.000+ Piese)")
     
-    # Preluare piese pentru tabelul interactiv
-    c.execute("SELECT id, denumire, cod_producator, cod_comercial, masina_montaj, subansamblu, pret_iesire FROM piese ORDER BY id ASC")
+    # Câmp de căutare rapidă după text (Denumire, Cod Producător sau Cod Comercial)
+    termen_cautare = st.text_input("🔍 Introdu denumirea piesei sau codul pentru căutare rapidă:", placeholder="Ex: rulment, 6204, cod_prod...")
+    
+    # Interogare dinamică bazată pe filtru de căutare pentru a nu bloca aplicația la 10.000 de rânduri
+    if termen_cautare.strip():
+        query_sql = """
+            SELECT id, denumire, cod_producator, cod_comercial, masina_montaj, subansamblu, pret_iesire 
+            FROM piese 
+            WHERE denumire ILIKE %s OR cod_producator ILIKE %s OR cod_comercial ILIKE %s
+            ORDER BY id ASC LIMIT 100
+        """
+        termen_like = f"%{termen_cautare.strip()}%"
+        c.execute(query_sql, (termen_like, termen_like, termen_like))
+    else:
+        # Dacă nu e căutare activă, afișăm primele 50 pentru viteză, sau poți ajusta
+        c.execute("SELECT id, denumire, cod_producator, cod_comercial, masina_montaj, subansamblu, pret_iesire FROM piese ORDER BY id ASC LIMIT 50")
+        st.caption("ℹ️ Afișat primele 50 de piese din baza de date. Folosește caseta de căutare de mai sus pentru a găsi instant piesa dorită.")
+
     piese_db = c.fetchall()
     
     if piese_db:
         import pandas as pd
         
-        # Construim un DataFrame pentru editorul interactiv
         df_piese = pd.DataFrame(piese_db, columns=["ID", "Denumire", "Cod Producător", "Cod Comercial", "Mașină Montaj", "Subansamblu", "Preț Vânzare (EUR)"])
         
-        # Afișare tabel editabil direct în interfață
+        # Tabel interactiv filtrat
         df_modificat = st.data_editor(
             df_piese, 
             num_rows="fixed", 
-            key="editor_piese_tabel",
+            key="editor_piese_tabel_filtrat",
             use_container_width=True,
-            disabled=["ID"] # ID-ul nu poate fi modificat
+            disabled=["ID"]
         )
         
         col_act1, col_act2 = st.columns(2)
         with col_act1:
-            if st.button("🔄 Salvează Modificările din Tabel", type="primary"):
+            if st.button("🔄 Salvează Modificările din Tabelul Filtrat", type="primary"):
                 for index, row in df_modificat.iterrows():
                     c.execute("""
                         UPDATE piese 
@@ -713,18 +728,18 @@ with tab_piese:
                         row["ID"]
                     ))
                 conn.commit()
-                st.success("Toate modificările aduse pieselor au fost salvate în baza de date!")
+                st.success("Modificările au fost salvate cu succes în baza de date!")
                 st.rerun()
                 
         with col_act2:
-            id_sters = st.number_input("ID-ul piesei de șters", min_value=1, step=1, key="input_id_sters")
+            id_sters = st.number_input("ID-ul piesei de șters", min_value=1, step=1, key="input_id_sters_piese")
             if st.button("🗑️ Șterge Piesa cu ID-ul selectat"):
                 c.execute("DELETE FROM piese WHERE id=%s", (id_sters,))
                 conn.commit()
                 st.success(f"Piesa cu ID-ul {id_sters} a fost ștearsă!")
                 st.rerun()
     else:
-        st.info("Nu există piese înregistrate în catalog.")
+        st.info("Nu a fost găsită nicio piesă conform căutării.")
         
     conn.close()
 
