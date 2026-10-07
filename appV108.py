@@ -22,7 +22,7 @@ load_dotenv()
 # ------------------------------------------------------------------------------
 def get_db_connection():
     # Preia linkul din st.secrets sau folosește un fallback sigur
-    db_url = st.secrets.get("DATABASE_URL", "postgresql://postgres:PAROLA_TA@db.PROIECT_ID.supabase.co:5432/postgres")
+    db_url = st.secrets.get("DATABASE_URL", "postgresql://postgres:Rapoarte.100!!@db.PROIECT_ID.supabase.co:5432/postgres")
     try:
         conn = psycopg2.connect(db_url)
         return conn
