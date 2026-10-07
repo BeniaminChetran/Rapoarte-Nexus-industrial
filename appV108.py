@@ -600,7 +600,7 @@ with tab_masini:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 4: Tabelul de Piese (Optimizat 10.000+ piese & Calcul Instantaneu Preț Vânzare)
+# TAB 4: Tabelul de Piese (Optimizat 10.000+ piese & Calcul Instantaneu Fără Formular Restrictiv)
 # ------------------------------------------------------------------------------
 with tab_piese:
     st.subheader("🔧 Gestiune Piese de Schimb")
@@ -616,23 +616,23 @@ with tab_piese:
     setari_actuale = get_setari()
     curs_bnr_val = float(setari_actuale[15]) if len(setari_actuale) > 15 and setari_actuale[15] is not None else 4.97
     
-    # 1. Formular Adăugare Piesă Nouă (Fără on_change în interiorul formularului pentru a evita eroarea)
-    with st.form("form_piese_noua_calcul", clear_on_submit=True):
+    # 1. Adăugare Piesă Nouă (Container simplu fără st.form pentru reîmprospătare instantanee)
+    with st.container():
         st.markdown("##### ➕ Adaugă Piesă Nouă")
         c1, c2 = st.columns(2)
         with c1:
-            p_denumire = st.text_input("Denumire Piesă *")
-            p_cod_prod = st.text_input("Cod Producător")
-            p_cod_com = st.text_input("Cod Comercial")
-            p_sub = st.text_input("Subansamblu")
+            p_denumire = st.text_input("Denumire Piesă *", key="nou_p_den")
+            p_cod_prod = st.text_input("Cod Producător", key="nou_p_cprod")
+            p_cod_com = st.text_input("Cod Comercial", key="nou_p_ccom")
+            p_sub = st.text_input("Subansamblu", key="nou_p_sub")
         with c2:
-            p_masini_alese = st.multiselect("Mașinile pe care se montează", options=masini_existente)
+            p_masini_alese = st.multiselect("Mașinile pe care se montează", options=masini_existente, key="nou_p_masini")
             
             if st.session_state["acces_piese_fin"]:
                 p_intrare = st.number_input("Preț Intrare / Achiziție (EUR)", min_value=0.0, value=0.0, key="p_intrare_form")
                 p_adcom = st.number_input("Ad. Com. (Adaos Comercial %)", min_value=0.0, value=0.0, key="p_adcom_form")
                 
-                # Calcul instant preț vânzare afișat vizual și blocat
+                # Calcul instant preț vânzare (blocat la scriere, afișat dinamic)
                 p_iesire = p_intrare * (1 + p_adcom / 100.0)
                 st.info(f"🔒 Preț Vânzare (calculat instantaneu și blocat): **{p_iesire:.2f} EUR**")
             else:
@@ -640,9 +640,9 @@ with tab_piese:
                 p_adcom = 0.0
                 p_iesire = st.number_input("Preț Vânzare (EUR)", min_value=0.0, value=0.0, key="p_iesire_simplu")
                 
-            p_livrare = st.number_input("Livrare (zile)", min_value=0, value=1)
+            p_livrare = st.number_input("Livrare (zile)", min_value=0, value=1, key="nou_p_liv")
             
-        if st.form_submit_button("💾 Salvează Piesa Nouă"):
+        if st.button("💾 Salvează Piesa Nouă", key="btn_salv_piesa_noua"):
             if p_denumire:
                 masini_text_str = ", ".join(p_masini_alese) if p_masini_alese else "General"
                 c.execute("""
@@ -652,6 +652,8 @@ with tab_piese:
                 conn.commit()
                 st.success(f"Piesa **{p_denumire}** a fost salvată în Supabase!")
                 st.rerun()
+            else:
+                st.error("Introduceți cel puțin denumirea piesei.")
     
     st.markdown("---")
     st.subheader("🔎 Căutare și Selectare Piesă (Catalog 10.000+ Piese)")
@@ -686,10 +688,10 @@ with tab_piese:
             st.markdown(f"#### ⚙️ Detalii & Modificare Piesă (ID: {pid})")
             st.write(f"**Denumire:** {p_den} | **Preț Vânzare:** {pret_iesire_ron:.2f} LEI ({p_preties or 0.0} EUR)")
             
-            # Secțiunea de modificare punctuală a piesei selectate
+            # Secțiunea de modificare punctuală menținută deschisă (fără formular restrictiv de tip st.form)
             if st.session_state["acces_piese_fin"]:
-                with st.form(f"mod_piesa_punctuala_{pid}"):
-                    st.markdown("##### 📝 Formular Modificare Piesă (Secțiune Avansată Deblocată)")
+                with st.container():
+                    st.markdown("##### 📝 Modificare Piesă (Secțiune Avansată Deblocată)")
                     mp_den = st.text_input("Denumire", value=p_den, key=f"mp_den_{pid}")
                     mp_cprod = st.text_input("Cod Producător", value=p_cprod or "", key=f"mp_cp_{pid}")
                     mp_ccom = st.text_input("Cod Comercial", value=p_ccom or "", key=f"mp_cc_{pid}")
@@ -705,16 +707,16 @@ with tab_piese:
                     
                     col_p1, col_p2 = st.columns(2)
                     with col_p1:
-                        if st.form_submit_button("🔄 Actualizează Piesa"):
+                        if st.button("🔄 Actualizează Piesa", key=f"btn_act_p_{pid}"):
                             c.execute("""
                                 UPDATE piese SET denumire=%s, cod_producator=%s, cod_comercial=%s, masina_montaj=%s, subansamblu=%s, pret_iesire=%s, pret_intrare=%s, ad_com=%s
                                 WHERE id=%s
                             """, (mp_den, mp_cprod, mp_ccom, mp_mmas, mp_sub, mp_iesire, mp_intrare, mp_adcom, pid))
                             conn.commit()
                             st.success("Piesa a fost actualizată cu succes!")
-                            st.rerun()
+                            # Fără st.rerun() forțat pentru a lăsa fereastra/înregistrarea deschisă vizibilă
                     with col_p2:
-                        if st.form_submit_button("🗑️ Șterge Piesa"):
+                        if st.button("🗑️ Șterge Piesa", key=f"btn_del_p_{pid}"):
                             c.execute("DELETE FROM piese WHERE id=%s", (pid,))
                             conn.commit()
                             st.success("Piesa a fost ștearsă!")
