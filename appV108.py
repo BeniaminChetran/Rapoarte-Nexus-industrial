@@ -600,37 +600,13 @@ with tab_masini:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 4: Tabelul de Piese (Calcul Automat Adaos & Blocare Preț Vânzare)
+# TAB 4: Tabelul de Piese (Optimizat 10.000+ piese & Secțiune Avansată la Final)
 # ------------------------------------------------------------------------------
 with tab_piese:
     st.subheader("🔧 Gestiune Piese de Schimb")
     
     if "acces_piese_fin" not in st.session_state:
         st.session_state["acces_piese_fin"] = False
-        
-    with st.expander("🔐 Secțiune securizată (Deblocare prețuri de achiziție / intrări)", expanded=not st.session_state["acces_piese_fin"]):
-        if not st.session_state["acces_piese_fin"]:
-            pass_input = st.text_input("Introduceți parola pentru detalii avansate (achiziție/intrare):", type="password", key="pass_input_fin_piese_sec")
-            
-            conn_temp = get_db_connection()
-            c_temp = conn_temp.cursor()
-            c_temp.execute("SELECT pass FROM setari LIMIT 1")
-            res_pass = c_temp.fetchone()
-            conn_temp.close()
-            parola_corecta = str(res_pass[0]) if res_pass and res_pass[0] is not None else "nexus123"
-            
-            if st.button("Deblocare Secțiune Avansată", key="btn_deb_piese_sec"):
-                if pass_input == parola_corecta:
-                    st.session_state["acces_piese_fin"] = True
-                    st.success("Acces acordat!")
-                    st.rerun()
-                else:
-                    st.error("Parolă incorectă!")
-        else:
-            st.success("🔒 Secțiunea avansată este deblocată.")
-            if st.button("Blocare Acces", key="btn_bloc_piese_sec"):
-                st.session_state["acces_piese_fin"] = False
-                st.rerun()
 
     conn = get_db_connection()
     c = conn.cursor()
@@ -640,7 +616,7 @@ with tab_piese:
     setari_actuale = get_setari()
     curs_bnr_val = float(setari_actuale[15]) if len(setari_actuale) > 15 and setari_actuale[15] is not None else 4.97
     
-    # Formular Adăugare Piesă Nouă
+    # 1. Formular Adăugare Piesă Nouă
     with st.form("form_piese_noua_calcul", clear_on_submit=True):
         st.markdown("##### ➕ Adaugă Piesă Nouă")
         c1, c2 = st.columns(2)
@@ -652,6 +628,7 @@ with tab_piese:
         with c2:
             p_masini_alese = st.multiselect("Mașinile pe care se montează", options=masini_existente)
             
+            # Dacă secțiunea avansată este deblocată, permitem introducerea prețului de intrare și adaosului comercial
             if st.session_state["acces_piese_fin"]:
                 p_intrare = st.number_input("Preț Intrare / Achiziție (EUR)", min_value=0.0, value=0.0, key="p_intrare_form")
                 p_adcom = st.number_input("Ad. Com. (Adaos Comercial %)", min_value=0.0, value=0.0, key="p_adcom_form")
@@ -661,13 +638,12 @@ with tab_piese:
                     st.info(f"💡 Preț Vânzare calculat automat prin adaos: **{p_iesire:.2f} EUR**")
                 else:
                     p_iesire = st.number_input("Preț Vânzare (EUR) - Manual", min_value=0.0, value=0.0, key="p_iesire_form")
-                
-                p_livrare = st.number_input("Livrare (zile)", min_value=0, value=1)
             else:
                 p_intrare = 0.0
                 p_adcom = 0.0
                 p_iesire = st.number_input("Preț Vânzare (EUR)", min_value=0.0, value=0.0, key="p_iesire_simplu")
-                p_livrare = 1
+                
+            p_livrare = st.number_input("Livrare (zile)", min_value=0, value=1)
             
         if st.form_submit_button("💾 Salvează Piesa Nouă"):
             if p_denumire:
@@ -681,49 +657,109 @@ with tab_piese:
                 st.rerun()
     
     st.markdown("---")
-    st.subheader("📋 Catalog Piese Înregistrate")
+    st.subheader("🔎 Căutare și Selectare Piesă (Catalog 10.000+ Piese)")
+    st.caption("ℹ️ Pentru a asigura performanța maximă cu un volum mare de piese, utilizați căutarea de mai jos pentru a găsi rapid piesa dorită.")
     
-    c.execute("SELECT id, denumire, cod_producator, cod_comercial, masina_montaj, subansamblu, pret_iesire, pret_intrare, ad_com FROM piese")
-    piese_db = c.fetchall()
+    termen_cautare_piese = st.text_input("🔍 Caută piesă după denumire, cod producător sau cod comercial:", placeholder="Scrie textul de căutare...", key="search_piese_10k")
     
-    for p in piese_db:
-        pid, p_den, p_cprod, p_ccom, p_mmas, p_subans, p_preties, p_pretintrav, p_adcomval = p
-        pret_iesire_ron = (p_preties if p_preties is not None else 0.0) * curs_bnr_val
+    piese_gasite = []
+    if termen_cautare_piese.strip():
+        q_search = f"%{termen_cautare_piese.strip()}%"
+        c.execute("""
+            SELECT id, denumire, cod_producator, cod_comercial, masina_montaj, subansamblu, pret_iesire, pret_intrare, ad_com 
+            FROM piese 
+            WHERE denumire ILIKE %s OR cod_producator ILIKE %s OR cod_comercial ILIKE %s
+            LIMIT 50
+        """, (q_search, q_search, q_search))
+        piese_gasite = c.fetchall()
+    
+    if termen_cautare_piese.strip() and piese_gasite:
+        st.markdown(f"Rezultate găsite: **{len(piese_gasite)}** piese.")
         
-        with st.expander(f"🔧 {p_den} | Cod: {p_cprod or 'N/A'} | Preț Vânzare: **{pret_iesire_ron:.2f} LEI**"):
-            with st.form(f"mod_piesa_calc_{pid}"):
-                mp_den = st.text_input("Denumire", value=p_den, key=f"mp_den_{pid}")
-                mp_cprod = st.text_input("Cod Producător", value=p_cprod or "", key=f"mp_cp_{pid}")
-                mp_ccom = st.text_input("Cod Comercial", value=p_ccom or "", key=f"mp_cc_{pid}")
-                mp_mmas = st.text_input("Mașină Montaj", value=p_mmas or "", key=f"mp_mm_{pid}")
-                mp_sub = st.text_input("Subansamblu", value=p_subans or "", key=f"mp_sub_{pid}")
-                
-                mp_intrare = st.number_input("Preț Intrare (EUR)", value=float(p_pretintrav or 0.0), key=f"mp_int_{pid}")
-                mp_adcom = st.number_input("Adaos Comercial (%)", value=float(p_adcomval or 0.0), key=f"mp_adc_{pid}")
-                
-                if mp_adcom > 0:
-                    mp_iesire = mp_intrare * (1 + mp_adcom / 100.0)
-                    st.info(f"🔒 Preț Vânzare blocat (calculat automat din adaos): **{mp_iesire:.2f} EUR**")
+        # Selectăm o piesă din rezultate pentru vizualizare sau modificare punctuală
+        opțiuni_select_piesa = {f"ID: {p[0]} | {p[1]} (Cod Prod: {p[2] or 'N/A'})": p[0] for p in piese_gasite}
+        piesa_selectata_label = st.selectbox("Selectează piesa dorită din lista de rezultate:", options=list(opțiuni_select_piesa.keys()), key="select_piesa_rezult")
+        
+        if piesa_selectata_label:
+            pid_ales = opțiuni_select_piesa[piesa_selectata_label]
+            p_curenta_det = [p for p in piese_gasite if p[0] == pid_ales][0]
+            
+            pid, p_den, p_cprod, p_ccom, p_mmas, p_subans, p_preties, p_pretintrav, p_adcomval = p_curenta_det
+            pret_iesire_ron = (p_preties if p_preties is not None else 0.0) * curs_bnr_val
+            
+            st.markdown(f"#### ⚙️ Detalii & Modificare Piesă (ID: {pid})")
+            st.write(f"**Denumire:** {p_den} | **Preț Vânzare:** {pret_iesire_ron:.2f} LEI ({p_preties or 0.0} EUR)")
+            
+            # Secțiunea de modificare punctuală a piesei selectate (necesită parolă sau secțiune avansată deblocată)
+            if st.session_state["acces_piese_fin"]:
+                with st.form(f"mod_piesa_punctuala_{pid}"):
+                    st.markdown("##### 📝 Formular Modificare Piesă (Secțiune Avansată Deblocată)")
+                    mp_den = st.text_input("Denumire", value=p_den, key=f"mp_den_{pid}")
+                    mp_cprod = st.text_input("Cod Producător", value=p_cprod or "", key=f"mp_cp_{pid}")
+                    mp_ccom = st.text_input("Cod Comercial", value=p_ccom or "", key=f"mp_cc_{pid}")
+                    mp_mmas = st.text_input("Mașină Montaj", value=p_mmas or "", key=f"mp_mm_{pid}")
+                    mp_sub = st.text_input("Subansamblu", value=p_subans or "", key=f"mp_sub_{pid}")
+                    
+                    mp_intrare = st.number_input("Preț Intrare / Achiziție (EUR)", value=float(p_pretintrav or 0.0), key=f"mp_int_{pid}")
+                    mp_adcom = st.number_input("Adaos Comercial (%)", value=float(p_adcomval or 0.0), key=f"mp_adc_{pid}")
+                    
+                    if mp_adcom > 0:
+                        mp_iesire = mp_intrare * (1 + mp_adcom / 100.0)
+                        st.info(f"🔒 Preț Vânzare blocat (calculat automat din adaos): **{mp_iesire:.2f} EUR**")
+                    else:
+                        mp_iesire = st.number_input("Preț Vânzare (EUR)", value=float(p_preties or 0.0), key=f"mp_ies_{pid}")
+                    
+                    col_p1, col_p2 = st.columns(2)
+                    with col_p1:
+                        if st.form_submit_button("🔄 Actualizează Piesa"):
+                            c.execute("""
+                                UPDATE piese SET denumire=%s, cod_producator=%s, cod_comercial=%s, masina_montaj=%s, subansamblu=%s, pret_iesire=%s, pret_intrare=%s, ad_com=%s
+                                WHERE id=%s
+                            """, (mp_den, mp_cprod, mp_ccom, mp_mmas, mp_sub, mp_iesire, mp_intrare, mp_adcom, pid))
+                            conn.commit()
+                            st.success("Piesa a fost actualizată cu succes!")
+                            st.rerun()
+                    with col_p2:
+                        if st.form_submit_button("🗑️ Șterge Piesa"):
+                            c.execute("DELETE FROM piese WHERE id=%s", (pid,))
+                            conn.commit()
+                            st.success("Piesa a fost ștearsă!")
+                            st.rerun()
+            else:
+                st.warning("🔒 Pentru a putea **modifica** sau vedea prețul de intrare/adaosul comercial al acestei piese, deblocați secțiunea avansată de mai jos cu parola.")
+    elif termen_cautare_piese.strip():
+        st.info("Nu a fost găsită nicio piesă conform căutării.")
+    else:
+        st.info("💡 Introduceți un termen în caseta de căutare de mai sus pentru a găsi și selecta piesa dorită.")
+
+    st.markdown("---")
+    
+    # 2. Secțiunea Securizată mutatǎ la FINALUL paginii Tab 4
+    st.subheader("🔐 Secțiune Securizată (Deblocare Detalii Avansate & Modificare Piese)")
+    with st.expander("🔑 Deblocare Preț de Intrare, Adaos Comercial & Drepturi de Modificare", expanded=not st.session_state["acces_piese_fin"]):
+        if not st.session_state["acces_piese_fin"]:
+            pass_input_fin = st.text_input("Introduceți parola de administrator pentru piese:", type="password", key="pass_input_fin_piese_final")
+            
+            conn_temp = get_db_connection()
+            c_temp = conn_temp.cursor()
+            c_temp.execute("SELECT pass FROM setari LIMIT 1")
+            res_pass = c_temp.fetchone()
+            conn_temp.close()
+            parola_corecta = str(res_pass[0]) if res_pass and res_pass[0] is not None else "nexus123"
+            
+            if st.button("Deblocare Secțiune Avansată Piese", key="btn_deb_piese_final"):
+                if pass_input_fin == parola_corecta:
+                    st.session_state["acces_piese_fin"] = True
+                    st.success("Acces avansat acordat cu succes!")
+                    st.rerun()
                 else:
-                    mp_iesire = st.number_input("Preț Vânzare (EUR)", value=float(p_preties or 0.0), key=f"mp_ies_{pid}")
+                    st.error("Parolă incorectă!")
+        else:
+            st.success("🔒 Secțiunea avansată este momentan DEBLOCATĂ. Aveți acces la prețurile de intrare, adaos comercial și modificarea pieselor.")
+            if st.button("Blocare Acces Avansat", key="btn_bloc_piese_final"):
+                st.session_state["acces_piese_fin"] = False
+                st.rerun()
                 
-                col_p1, col_p2 = st.columns(2)
-                with col_p1:
-                    if st.form_submit_button("🔄 Actualizează Piesa"):
-                        c.execute("""
-                            UPDATE piese SET denumire=%s, cod_producator=%s, cod_comercial=%s, masina_montaj=%s, subansamblu=%s, pret_iesire=%s, pret_intrare=%s, ad_com=%s
-                            WHERE id=%s
-                        """, (mp_den, mp_cprod, mp_ccom, mp_mmas, mp_sub, mp_iesire, mp_intrare, mp_adcom, pid))
-                        conn.commit()
-                        st.success("Piesa a fost actualizată cu succes!")
-                        st.rerun()
-                with col_p2:
-                    if st.form_submit_button("🗑️ Șterge Piesa"):
-                        c.execute("DELETE FROM piese WHERE id=%s", (pid,))
-                        conn.commit()
-                        st.success("Piesa a fost ștearsă!")
-                        st.rerun()
-                        
     conn.close()
 
 # ------------------------------------------------------------------------------
