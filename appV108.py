@@ -1,5 +1,6 @@
 #-----------------------------------------------------------------------------------
 # APLICATIE STREAMLIT OPTIMIZATĂ PENTRU SUPABASE (POSTGRESQL)
+functional in github appV108.py
 #-----------------------------------------------------------------------------------
 
 import os
@@ -83,7 +84,7 @@ def init_db():
         )
     ''')
     
-    # 3. Tabel Piese de Schimb (actualizat cu preț intrare, ieșire, ad. com., livrare)
+    # 3. Tabel Piese de Schimb
     c.execute('''
         CREATE TABLE IF NOT EXISTS piese (
             id SERIAL PRIMARY KEY,
@@ -92,11 +93,7 @@ def init_db():
             cod_comercial TEXT,
             masina_montaj TEXT,
             subansamblu TEXT,
-            pret_achizitie REAL,
-            pret_intrare REAL DEFAULT 0,
-            pret_iesire REAL DEFAULT 0,
-            ad_com REAL DEFAULT 0,
-            livrare REAL DEFAULT 0
+            pret_achizitie REAL
         )
     ''')
     
@@ -133,23 +130,7 @@ def init_db():
         )
     ''')
     
-    # 5.1. Tabel Devize de Calcul / Oferte
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS devize (
-            id SERIAL PRIMARY KEY,
-            tip TEXT,
-            firma TEXT,
-            masina TEXT,
-            piese_json TEXT,
-            total_valoare REAL,
-            tva_valoare REAL,
-            total_cu_tva REAL,
-            memo TEXT,
-            data_creare TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # 6. Tabel Setări Aplicație (inclusiv TVA și Pass mascat)
+    # 6. Tabel Setări Aplicație & Date Fiscale & SMTP & Email Tehnician
     c.execute('''
         CREATE TABLE IF NOT EXISTS setari (
             id SERIAL PRIMARY KEY,
@@ -165,18 +146,16 @@ def init_db():
             smtp_user TEXT,
             smtp_pass TEXT,
             google_sheet_url TEXT,
-            email_tehnician TEXT,
-            tva REAL DEFAULT 21.0,
-            pass TEXT DEFAULT 'nexus123'
+            email_tehnician TEXT
         )
     ''')
     
     c.execute("SELECT COUNT(*) FROM setari")
     if c.fetchone()[0] == 0:
         c.execute("""
-            INSERT INTO setari (nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician, tva, pass)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, ("Nexus Industrial SRL", "", "", "", "", "", "", "smtp.gmail.com", 587, "", "", "", "", 21.0, "nexus123"))
+            INSERT INTO setari (nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, ("Nexus Industrial SRL", "", "", "", "", "", "", "smtp.gmail.com", 587, "", "", "", ""))
     
     conn.commit()
     conn.close()
@@ -186,29 +165,25 @@ init_db()
 def get_setari():
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician, tva, pass FROM setari LIMIT 1")
+    c.execute("SELECT nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician FROM setari LIMIT 1")
     res = c.fetchone()
     conn.close()
     if res:
         return res
-    return ("Nexus Industrial SRL", "", "", "", "", "", "", "smtp.gmail.com", 587, "", "", "", 21.0, "nexus123")
+    return ("Nexus Industrial SRL", "", "", "", "", "", "", "smtp.gmail.com", 587, "", "", "", "")
 
 # ------------------------------------------------------------------------------
-# 3. Clasă Generare PDF Profesionist (Deviz, Oferta de pret, Raport)
+# 3. Clasă Generare PDF Profesionist
 # ------------------------------------------------------------------------------
 class RaportPDF(FPDF):
-    def __init__(self, document_title="RAPORT DE INTERVENTIE TEHNICA"):
-        super().__init__()
-        self.document_title = document_title
-
     def header(self):
         self.set_fill_color(30, 41, 59)
         self.rect(0, 0, 210, 25, 'F')
         
-        self.set_font('Helvetica', 'B', 15)
+        self.set_font('Helvetica', 'B', 16)
         self.set_text_color(255, 255, 255)
         self.set_xy(10, 8)
-        self.cell(0, 10, curata_text(self.document_title), 0, 0, 'L')
+        self.cell(0, 10, 'RAPORT DE INTERVENTIE TEHNICA', 0, 0, 'L')
         
         self.set_font('Helvetica', '', 10)
         self.set_xy(140, 8)
@@ -219,7 +194,7 @@ class RaportPDF(FPDF):
         self.set_y(-15)
         self.set_font('Helvetica', 'I', 8)
         self.set_text_color(128, 128, 128)
-        self.cell(0, 10, 'Pagina ' + str(self.page_no()) + ' | Generat automat - Nexus Industrial', 0, 0, 'C')
+        self.cell(0, 10, 'Pagina ' + str(self.page_no()) + ' | Raport generat automat', 0, 0, 'C')
 
 def curata_text(text):
     if not text:
@@ -233,8 +208,8 @@ def curata_text(text):
         text = text.replace(k, v)
     return text
 
-def genereaza_pdf(data, titlu_doc="RAPORT DE INTERVENTIE TEHNICA"):
-    pdf = RaportPDF(document_title=titlu_doc)
+def genereaza_pdf(data):
+    pdf = RaportPDF()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     
@@ -242,6 +217,7 @@ def genereaza_pdf(data, titlu_doc="RAPORT DE INTERVENTIE TEHNICA"):
     SECONDARY = (71, 85, 105)
     BG_LIGHT = (241, 245, 249)
     
+    # Preluare date setări firmă emitentă pentru antetul PDF
     setari_pdf = get_setari()
     nume_emitent = setari_pdf[0]
     cui_emitent = setari_pdf[1]
@@ -251,6 +227,7 @@ def genereaza_pdf(data, titlu_doc="RAPORT DE INTERVENTIE TEHNICA"):
     iban_emitent = setari_pdf[5]
     swep_emitent = setari_pdf[6]
 
+    # Afișare date firmă emitentă sus în pagină
     pdf.set_font('Helvetica', 'B', 9)
     pdf.set_text_color(*PRIMARY)
     pdf.cell(0, 5, curata_text(f"{nume_emitent} | CUI: {cui_emitent} | Reg. Com.: {reg_emitent}"), 0, 1, 'L')
@@ -258,106 +235,104 @@ def genereaza_pdf(data, titlu_doc="RAPORT DE INTERVENTIE TEHNICA"):
     pdf.set_text_color(*SECONDARY)
     pdf.cell(0, 4, curata_text(f"Adresă: {adresa_emitent} | Bancă: {banca_emitent} | IBAN: {iban_emitent} | SWIFT: {swep_emitent}"), 0, 1, 'L')
     
+    # Spațiu liber suplimentar pentru a evita suprapunerea cu linia
     pdf.ln(6)
 
     pdf.set_font('Helvetica', 'B', 11)
     pdf.set_text_color(*PRIMARY)
-    doc_id = data.get('id', 'N/A')
-    pdf.cell(100, 7, curata_text(f"Număr: #{doc_id}"), 0, 0)
-    pdf.cell(90, 7, curata_text(f"Data: {str(data.get('data', datetime.now()))[:10]}"), 0, 1, 'R')
+    pdf.cell(100, 7, curata_text(f"Nr. Inregistrare: #{data['id']}"), 0, 0)
+    pdf.cell(90, 7, curata_text(f"Data: {str(data['data'])[:10]}"), 0, 1, 'R')
     
     pdf.line(10, pdf.get_y() + 2, 200, pdf.get_y() + 2)
     pdf.ln(6)
 
     pdf.set_fill_color(*BG_LIGHT)
-    pdf.rect(10, pdf.get_y(), 190, 24, 'F')
+    pdf.rect(10, pdf.get_y(), 190, 32, 'F')
     
     pdf.set_xy(12, pdf.get_y() + 2)
     pdf.set_font('Helvetica', 'B', 10)
     pdf.set_text_color(*PRIMARY)
-    pdf.cell(90, 6, curata_text("BENEFICIAR / CLIENT"), 0, 0)
-    pdf.cell(90, 6, curata_text("ECHIPAMENT / DETALII"), 0, 1)
+    pdf.cell(90, 6, curata_text("DETALII CLIENT"), 0, 0)
+    pdf.cell(90, 6, curata_text("DETALII ECHIPAMENT"), 0, 1)
     
     pdf.set_font('Helvetica', '', 9)
     pdf.set_text_color(0, 0, 0)
     
     pdf.set_x(12)
-    pdf.cell(90, 5, curata_text(f"Client: {data.get('client', 'Nespecificat')}"), 0, 0)
-    pdf.cell(90, 5, curata_text(f"Echipament: {data.get('masina', 'General')}"), 0, 1)
+    pdf.cell(90, 5, curata_text(f"Client: {data['client'] or 'Nespecificat'}"), 0, 0)
+    pdf.cell(90, 5, curata_text(f"Echipament: {data['masina']} ({data.get('subansamblu','')})"), 0, 1)
+    
+    pdf.set_x(12)
+    pdf.cell(90, 5, curata_text(f"Durata: {data['durata']} minute"), 0, 0)
+    pdf.cell(90, 5, curata_text(f"Cod Eroare: {data.get('cod_eroare','N/A')}"), 0, 1)
+
+    pdf.set_x(12)
+    pdf.cell(90, 5, "", 0, 0)
+    pdf.set_font('Helvetica', 'B', 9)
+    pdf.cell(90, 5, curata_text(f"Stare Finala: {data['stare_finala']}"), 0, 1)
     
     pdf.ln(8)
 
-    # Dacă este Deviz sau Ofertă de preț
-    if titlu_doc in ["Deviz", "Oferta de pret"]:
+    def adauga_sectiune(titlu, continut):
         pdf.set_font('Helvetica', 'B', 10)
         pdf.set_text_color(*SECONDARY)
-        pdf.cell(0, 6, curata_text("TABEL PIESE / SERVICII OFERTATE"), 0, 1)
+        pdf.cell(0, 6, curata_text(titlu.upper()), 0, 1)
         pdf.set_draw_color(*SECONDARY)
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.ln(2)
-        
-        pdf.set_font('Helvetica', 'B', 9)
-        pdf.cell(80, 6, curata_text("Denumire Piesă / Serviciu"), 1, 0, 'C', fill=True)
-        pdf.cell(25, 6, curata_text("Cantitate"), 1, 0, 'C', fill=True)
-        pdf.cell(40, 6, curata_text("Preț Unitar (EUR)"), 1, 0, 'C', fill=True)
-        pdf.cell(45, 6, curata_text("Valoare (EUR)"), 1, 1, 'C', fill=True)
-        
         pdf.set_font('Helvetica', '', 9)
-        piese_list = data.get('piese_json', [])
-        subtotal_val = 0
-        if piese_list:
-            for p in piese_list:
-                p_nume = p.get('piesa', '')
-                p_cant = p.get('cantitate', 1)
-                p_pret = p.get('pret_iesire', 0)
-                p_val = p_cant * p_pret
-                subtotal_val += p_val
-                
-                pdf.cell(80, 6, curata_text(p_nume), 1, 0, 'L')
-                pdf.cell(25, 6, str(p_cant), 1, 0, 'C')
-                pdf.cell(40, 6, f"{p_pret:.2f}", 1, 0, 'R')
-                pdf.cell(45, 6, f"{p_val:.2f}", 1, 1, 'R')
-        else:
-            pdf.cell(190, 6, curata_text("Nici o piesă adăugată"), 1, 1, 'C')
-        pdf.ln(2)
-        
-        tva_procent = data.get('tva_procent', 21.0)
-        val_tva = subtotal_val * (tva_procent / 100.0)
-        total_general = subtotal_val + val_tva
-        
-        pdf.set_font('Helvetica', 'B', 9)
-        pdf.cell(145, 6, curata_text("Subtotal (EUR):"), 1, 0, 'R')
-        pdf.cell(45, 6, f"{subtotal_val:.2f}", 1, 1, 'R')
-        pdf.cell(145, 6, curata_text(f"TVA ({tva_procent}%):"), 1, 0, 'R')
-        pdf.cell(45, 6, f"{val_tva:.2f}", 1, 1, 'R')
-        pdf.cell(145, 6, curata_text("TOTAL GENERAL CU TVA (EUR):"), 1, 0, 'R')
-        pdf.cell(45, 6, f"{total_general:.2f}", 1, 1, 'R')
-        pdf.ln(6)
-        
-        if data.get('memo'):
-            pdf.set_font('Helvetica', 'B', 9)
-            pdf.set_text_color(*SECONDARY)
-            pdf.cell(0, 5, curata_text("TERMENI ȘI CONDIȚII / MENȚIUNI"), 0, 1)
-            pdf.set_font('Helvetica', '', 8)
-            pdf.set_text_color(0, 0, 0)
-            pdf.multi_cell(0, 4, curata_text(data.get('memo')))
-    else:
-        # Raport clasic intervenție
-        def adauga_sectiune(titlu, continut):
-            pdf.set_font('Helvetica', 'B', 10)
-            pdf.set_text_color(*SECONDARY)
-            pdf.cell(0, 6, curata_text(titlu.upper()), 0, 1)
-            pdf.set_draw_color(*SECONDARY)
-            pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-            pdf.ln(2)
-            pdf.set_font('Helvetica', '', 9)
-            pdf.set_text_color(0, 0, 0)
-            pdf.multi_cell(0, 5, curata_text(continut or "Nespecificat"))
-            pdf.ln(4)
+        pdf.set_text_color(0, 0, 0)
+        pdf.multi_cell(0, 5, curata_text(continut or "Nespecificat"))
+        pdf.ln(4)
 
-        adauga_sectiune("Titlu Lucrare", data.get('titlu', ''))
-        adauga_sectiune("Simptom / Soluție", f"Simptom: {data.get('simptom','')} | Soluție: {data.get('solutie','')}")
-        
+    adauga_sectiune("Titlu Lucrare", data['titlu'])
+    adauga_sectiune("Simptom Initial / Defect", f"{data['simptom']} / {data['defect']}")
+    adauga_sectiune("Solutie / Lucrari Executate", data['solutie'])
+
+    pdf.set_font('Helvetica', 'B', 10)
+    pdf.set_text_color(*SECONDARY)
+    pdf.cell(0, 6, curata_text("TABEL PIESE (UTILIZATE / INLOCUITE / NECESARE / COMANDAT)"), 0, 1)
+    pdf.set_draw_color(*SECONDARY)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(2)
+    
+    pdf.set_font('Helvetica', 'B', 9)
+    pdf.cell(100, 6, curata_text("Denumire Piesa"), 1, 0, 'C', fill=True)
+    pdf.cell(40, 6, curata_text("Cantitate"), 1, 0, 'C', fill=True)
+    pdf.cell(50, 6, curata_text("Tip / Status"), 1, 1, 'C', fill=True)
+    
+    pdf.set_font('Helvetica', '', 9)
+    piese_list = data.get('piese_json', [])
+    if piese_list:
+        for p in piese_list:
+            pdf.cell(100, 6, curata_text(p.get('piesa', '')), 1, 0, 'L')
+            pdf.cell(40, 6, str(p.get('cantitate', 1)), 1, 0, 'C')
+            pdf.cell(50, 6, curata_text(p.get('tip', '')), 1, 1, 'C')
+    else:
+        pdf.cell(190, 6, curata_text("Nicio piesa inregistrata"), 1, 1, 'C')
+    pdf.ln(4)
+
+    if data['optimizari']:
+        adauga_sectiune("Recomandari Tehnice & Siguranta", data['optimizari'])
+
+    pdf.set_y(-45)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(4)
+    
+    pdf.set_font('Helvetica', 'B', 9)
+    pdf.set_text_color(*PRIMARY)
+    pdf.cell(95, 5, curata_text("EFECTUAT DE (TEHNICIAN)"), 0, 0, 'C')
+    pdf.cell(95, 5, curata_text("VERIFICAT / RECEPTIONAT DE"), 0, 1, 'C')
+    
+    pdf.set_font('Helvetica', '', 9)
+    pdf.set_text_color(0, 0, 0)
+    pdf.cell(95, 5, curata_text(f"Nume: {data['tehnician'] or 'Tehnician Nexus'}"), 0, 0, 'C')
+    pdf.cell(95, 5, curata_text(f"Nume: {data['verificator'] or 'Client'}"), 0, 1, 'C')
+    
+    pdf.ln(8)
+    pdf.cell(95, 5, curata_text("Semnatura: ___________________"), 0, 0, 'C')
+    pdf.cell(95, 5, curata_text("Semnatura: ___________________"), 0, 1, 'C')
+
     try:
         output = pdf.output()
     except TypeError:
@@ -373,7 +348,7 @@ def genereaza_pdf(data, titlu_doc="RAPORT DE INTERVENTIE TEHNICA"):
         return str(output).encode('latin1', errors='ignore')
 
 # ------------------------------------------------------------------------------
-# 4. Funcție Trimitere Email prin SMTP
+# 4. Funcție Trimitere Email prin SMTP (Client + Tehnician + contact@nexusindustrial.ro)
 # ------------------------------------------------------------------------------
 def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume_fisier):
     setari = get_setari()
@@ -387,6 +362,7 @@ def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume
     msg['Subject'] = subiect
     msg['From'] = smtp_u if smtp_u else "contact@nexusindustrial.ro"
     
+    # Colectare destinatari multipli
     destinatari = [destinatar_client]
     if email_tehnician:
         destinatari.append(email_tehnician)
@@ -426,15 +402,14 @@ st.sidebar.info("Aplicație optimizată pentru mobil și desktop.")
 
 st.title("🛠️ Sistem Integrat de Mentenanță - Nexus Industrial (Supabase)")
 
-tab_activitati, tab_optimizare, tab_masini, tab_piese, tab_firme, tab_deviz, tab_rapoarte, tab_setari = st.tabs([
+tab_activitati, tab_optimizare, tab_masini, tab_piese, tab_firme, tab_rapoarte, tab_setari = st.tabs([
     "📝 1. Activități", 
     "📊 2. Optimizare", 
     "🏭 3. Mașini", 
     "🔧 4. Piese", 
     "📇 5. Firme",
-    "🧮 6. Deviz & Ofertă",
-    "📋 7. Istoric",
-    "⚙️ 8. Setări"
+    "📋 6. Istoric",
+    "⚙️ 7. Setări"
 ])
 
 # ------------------------------------------------------------------------------
@@ -600,196 +575,6 @@ with tab_masini:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 4: Tabelul de Piese (cu parolă pentru prețuri și rubrici noi)
-# ------------------------------------------------------------------------------
-with tab_piese:
-    st.subheader("🔧 Gestiune Piese de Schimb")
-    
-    # Verificare parolă pentru vizibilitate rubrici financiare
-    if "acces_piese_fin" not in st.session_state:
-        st.session_state["acces_piese_fin"] = False
-        
-    if not st.session_state["acces_piese_fin"]:
-        pass_input = st.text_input("Introduceți parola pentru a vizualiza prețurile și detaliile avansate:", type="password")
-        setari_curente = get_setari()
-        parola_corecta = setari_curente[13] if len(setari_curente) > 13 else "nexus123"
-        if st.button("Deblocare Secțiune Financiară"):
-            if pass_input == parola_corecta:
-                st.session_state["acces_piese_fin"] = True
-                st.success("Acces acordat!")
-                st.rerun()
-            else:
-                st.error("Parolă incorectă!")
-    else:
-        st.success("🔒 Secțiunea financiară este deblocată.")
-        if st.button("Blocare Acces"):
-            st.session_state["acces_piese_fin"] = False
-            st.rerun()
-
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("SELECT denumire FROM masini")
-    masini_existente = [row[0] for row in c.fetchall()]
-    
-    with st.form("form_piese", clear_on_submit=True):
-        c1, c2 = st.columns(2)
-        with c1:
-            p_denumire = st.text_input("Denumire Piesă *")
-            p_cod_prod = st.text_input("Cod Producător")
-            p_cod_com = st.text_input("Cod Comercial")
-            p_sub = st.text_input("Subansamblu")
-        with c2:
-            p_masini_alese = st.multiselect("Mașinile pe care se montează", options=masini_existente)
-            p_pret = st.number_input("Preț (RON)", min_value=0.0, value=0.0)
-            p_intrare = st.number_input("Preț Intrare", min_value=0.0, value=0.0) if st.session_state["acces_piese_fin"] else 0.0
-            p_iesire = st.number_input("Preț Ieșire", min_value=0.0, value=0.0) if st.session_state["acces_piese_fin"] else 0.0
-            p_adcom = st.number_input("Ad. Com. (Adaos Comercial %)", min_value=0.0, value=0.0) if st.session_state["acces_piese_fin"] else 0.0
-            p_livrare = st.number_input("Livrare (zile)", min_value=0, value=1) if st.session_state["acces_piese_fin"] else 1
-            
-        if st.form_submit_button("💾 Salvează Piesa"):
-            if p_denumire:
-                masini_text_str = ", ".join(p_masini_alese) if p_masini_alese else "General"
-                c.execute("""
-                    INSERT INTO piese (denumire, cod_producator, cod_comercial, masina_montaj, subansamblu, pret_achizitie, pret_intrare, pret_iesire, ad_com, livrare)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (p_denumire, p_cod_prod, p_cod_com, masini_text_str, p_sub, p_pret, p_intrare, p_iesire, p_adcom, p_livrare))
-                conn.commit()
-                st.success(f"Piesa **{p_denumire}** a fost salvată în Supabase!")
-                st.rerun()
-    
-    st.markdown("---")
-    st.subheader("📋 Catalog Piese Înregistrate")
-    if st.session_state["acces_piese_fin"]:
-        c.execute("SELECT id, denumire, cod_producator, cod_comercial, masina_montaj, pret_intrare, pret_iesire, ad_com, livrare FROM piese")
-        piese_db = c.fetchall()
-        for p in piese_db:
-            st.write(f"🔧 **{p[1]}** | Cod: {p[2]} | Intrare: {p[5]} | Ieșire: {p[6]} | Adaos: {p[7]}% | Livrare: {p[8]} zile")
-    else:
-        c.execute("SELECT denumire, cod_producator, masina_montaj FROM piese")
-        piese_db = c.fetchall()
-        for p in piese_db:
-            st.write(f"🔧 **{p[0]}** | Cod: {p[1]} | Mașină: {p[2]}")
-    conn.close()
-
-# ------------------------------------------------------------------------------
-# TAB 6: Deviz & Ofertă de Preț
-# ------------------------------------------------------------------------------
-with tab_deviz:
-    st.subheader("🧮 Generare Deviz de Calcul & Ofertă de Preț")
-    conn = get_db_connection()
-    c = conn.cursor()
-    
-    c.execute("SELECT id, nume_firma, email FROM firme")
-    firme_deviz = c.fetchall()
-    firme_nume_list = [f[1] for f in firme_deviz]
-    
-    if not firme_nume_list:
-        st.warning("⚠️ Adăugați cel puțin o firmă în Tabul 5.")
-    else:
-        sel_firma_deviz = st.selectbox("Selectează Firma / Client", options=firme_nume_list, key="deviz_firma")
-        email_client_deviz = [f[2] for f in firme_deviz if f[1] == sel_firma_deviz][0] if firme_deviz else ""
-        
-        c.execute("SELECT m.denumire FROM masini m JOIN firme f ON m.firma_id = f.id WHERE f.nume_firma = %s", (sel_firma_deviz,))
-        masini_deviz = [row[0] for row in c.fetchall()]
-        sel_masina_deviz = st.selectbox("Selectează Mașina / Echipamentul (Opțional)", options=["General"] + masini_deviz, key="deviz_masina")
-        
-        # Preluare TVA din setări
-        setari_val = get_setari()
-        try:
-            tva_setat = float(setari_val[14]) if len(setari_val) > 14 and setari_val[14] is not None else 21.0
-        except (ValueError, TypeError):
-            tva_setat = 21.0
-        
-        st.markdown("##### 🛒 Selectare Piese / Servicii pentru Deviz")
-        if "randuri_deviz" not in st.session_state:
-            st.session_state["randuri_deviz"] = [{"piesa": "", "cantitate": 1, "pret_iesire": 0.0}]
-            
-        c.execute("SELECT denumire, pret_iesire FROM piese")
-        catalog_piese_raw = c.fetchall()
-        catalog_piese_dict = {row[0]: row[1] for row in catalog_piese_raw}
-        catalog_nume_piese = list(catalog_piese_dict.keys())
-        
-        for idx, rd in enumerate(st.session_state["randuri_deviz"]):
-            cols_d = st.columns([3, 1, 2, 2, 1])
-            with cols_d[0]:
-                st.session_state["randuri_deviz"][idx]["piesa"] = st.selectbox(f"Piesă/Serviciu #{idx+1}", options=["Selectează..."] + catalog_nume_piese, key=f"d_sel_{idx}")
-            with cols_d[1]:
-                st.session_state["randuri_deviz"][idx]["cantitate"] = st.number_input("Cant.", min_value=1, value=rd["cantitate"], key=f"d_cant_{idx}")
-            with cols_d[2]:
-                p_curenta = st.session_state["randuri_deviz"][idx]["piesa"]
-                pret_def = catalog_piese_dict.get(p_curenta, 0.0) if p_curenta != "Selectează..." else 0.0
-                st.session_state["randuri_deviz"][idx]["pret_iesire"] = st.number_input("Preț Unitar (EUR)", value=float(pret_def), key=f"d_pret_{idx}")
-            with cols_d[3]:
-                val_total_linie = st.session_state["randuri_deviz"][idx]["cantitate"] * st.session_state["randuri_deviz"][idx]["pret_iesire"]
-                st.metric("Total Linie", f"{val_total_linie:.2f} EUR")
-            with cols_d[4]:
-                if st.button("❌ Șterg", key=f"del_d_{idx}"):
-                    st.session_state["randuri_deviz"].pop(idx)
-                    st.rerun()
-                    
-        if st.button("➕ Adaugă altă linie"):
-            st.session_state["randuri_deviz"].append({"piesa": "", "cantitate": 1, "pret_iesire": 0.0})
-            st.rerun()
-            
-        # Calcul subtotal, tva și total
-        piese_valide_deviz = [p for p in st.session_state["randuri_deviz"] if p["piesa"] != "Selectează..."]
-        subtotal_deviz = sum([p["cantitate"] * p["pret_iesire"] for p in piese_valide_deviz])
-        tva_deviz = subtotal_deviz * (tva_setat / 100.0)
-        total_cu_tva_deviz = subtotal_deviz + tva_deviz
-        
-        st.markdown(f"### 💶 Sumar Financiar: Subtotal: **{subtotal_deviz:.2f} EUR** | TVA ({tva_setat}%): **{tva_deviz:.2f} EUR** | Total cu TVA: **{total_cu_tva_deviz:.2f} EUR**")
-        
-        default_memo = (
-            "Oferta de preț este exprimată în EURO, totalul conține TVA și este valabilă 15 zile.\n"
-            "Termenul de livrare este exprimat în zile lucrătoare și nu s-au luat în calcul zilele nelucrătoare oficiale.\n"
-            "În funcție de complexitatea lucrărilor, durata intervenției poate suferi modificări. Acestea vă vor fi comunicate la fața locului.\n"
-            "După demontarea grinzii de măsurare mașina de debitat nu mai poate fi utilizată până la finalizarea lucrării.\n"
-            "Ghidajele liniare, patinele, rigla magnetică, capul de citire magnetic și consola electronică sunt furnizate de către client și nu fac obiectul...\n"
-            "Pentru elementele care nu funcționează corect din cauza uzurilor sau defectelor ascunse se va face altă ofertă de preț iar timpul de predare...\n"
-            "Eșalonare tranșe de plată:\n"
-            "Tranșe 1    30% - la acceptarea ofertei de preț\n"
-            "Tranșe 2    30% - la livrarea produselor\n"
-            "Tranșe 3    40% - la finalizarea lucrării/punerea în funcțiune"
-        )
-        memo_text = st.text_area("Termeni și Condiții / Mențiuni (Memo)", value=default_memo, height=180)
-        
-        col_db1, col_db2, col_db3 = st.columns(3)
-        
-        data_deviz_struct = {
-            "id": "DVZ-01", "client": sel_firma_deviz, "masina": sel_masina_deviz, 
-            "piese_json": piese_valide_deviz, "tva_procent": tva_setat, "memo": memo_text
-        }
-        
-        with col_db1:
-            if st.button("📥 Generează PDF Deviz", type="primary"):
-                pdf_deviz_bytes = genereaza_pdf(data_deviz_struct, titlu_doc="Deviz")
-                st.download_button("💾 Descarcă Deviz PDF", data=pdf_deviz_bytes, file_name="Deviz_Calcul.pdf", mime="application/pdf")
-                
-        with col_db2:
-            if st.button("📥 Generează PDF Ofertă de Preț"):
-                pdf_oferta_bytes = genereaza_pdf(data_deviz_struct, titlu_doc="Oferta de pret")
-                st.download_button("💾 Descarcă Ofertă PDF", data=pdf_oferta_bytes, file_name="Oferta_Pret.pdf", mime="application/pdf")
-                
-        with col_db3:
-            if st.button("💾 Salvează & Trimite Deviz pe Email"):
-                c.execute("""
-                    INSERT INTO devize (tip, firma, masina, piese_json, total_valoare, tva_valoare, total_cu_tva, memo)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, ("Deviz / Ofertă", sel_firma_deviz, sel_masina_deviz, json.dumps(piese_valide_deviz, ensure_ascii=False), subtotal_deviz, tva_deviz, total_cu_tva_deviz, memo_text))
-                conn.commit()
-                
-                pdf_deviz_bytes = genereaza_pdf(data_deviz_struct, titlu_doc="Deviz")
-                subiect_mail = f"Deviz de Calcul / Ofertă - {sel_firma_deviz}"
-                corp_mail = f"Stimate beneficiar,\n\nVă atașăm devizul de calcul pentru echipamentul {sel_masina_deviz}.\n\nEchipa Nexus Industrial"
-                
-                success, msg = trimite_email_raport(email_client_deviz, subiect_mail, corp_mail, pdf_deviz_bytes, "Deviz.pdf")
-                if success:
-                    st.success(f"Devizul a fost salvat și e-mailul trimis cu succes! ({msg})")
-                else:
-                    st.error(msg)
-    conn.close()
-
-# ------------------------------------------------------------------------------
 # TAB 1: Activități Zilnice
 # ------------------------------------------------------------------------------
 with tab_activitati:
@@ -911,19 +696,13 @@ with tab_activitati:
                 rdata = full_rep_salvat[15]
                 piese_data_salvate = json.loads(full_rep_salvat[7]) if full_rep_salvat[7] else []
                 
-                # Filtrăm piesele ca să excludem manopera și transportul (case insensitive)
-                piese_filtrate_raport = [
-                    p for p in piese_data_salvate 
-                    if 'manopera' not in p.get('piesa', '').lower() and 'transport' not in p.get('piesa', '').lower()
-                ]
-                
                 date_pdf = {
                     "id": full_rep_salvat[0], "client": full_rep_salvat[1], "masina": full_rep_salvat[2], "subansamblu": full_rep_salvat[3],
-                    "durata": full_rep_salvat[4], "cod_eroare": full_rep_salvat[5], "stare_finala": full_rep_salvat[6], "piese_json": piese_filtrate_raport,
+                    "durata": full_rep_salvat[4], "cod_eroare": full_rep_salvat[5], "stare_finala": full_rep_salvat[6], "piese_json": piese_data_salvate,
                     "titlu": full_rep_salvat[8], "simptom": full_rep_salvat[9], "defect": full_rep_salvat[10], "solutie": full_rep_salvat[11],
                     "optimizari": full_rep_salvat[12], "tehnician": full_rep_salvat[13], "verificator": full_rep_salvat[14], "data": rdata
                 }
-                pdf_bytes = genereaza_pdf(date_pdf, titlu_doc="RAPORT DE INTERVENTIE TEHNICA")
+                pdf_bytes = genereaza_pdf(date_pdf)
                 
                 with col_b2:
                     st.download_button(
@@ -947,23 +726,21 @@ with tab_activitati:
                             if sheet_url:
                                 try:
                                     ora_curenta = datetime.now().strftime("%H:%M:%S")
-                                    piese_utilizate_str = ", ".join([f"{p.get('piesa')} ({p.get('cantitate')})" for p in piese_filtrate_raport if p.get('tip') in ['Utilizata', 'Inlocuita']])
-                                    piese_necesare_str = ", ".join([f"{p.get('piesa')} ({p.get('cantitate')})" for p in piese_filtrate_raport if p.get('tip') in ['Necesara', 'De Comandat']])
+                                    piese_utilizate_str = ", ".join([f"{p.get('piesa')} ({p.get('cantitate')})" for p in piese_data_salvate if p.get('tip') in ['Utilizata', 'Inlocuita']])
+                                    piese_necesare_str = ", ".join([f"{p.get('piesa')} ({p.get('cantitate')})" for p in piese_data_salvate if p.get('tip') in ['Necesara', 'De Comandat']])
                                     
                                     payload_sheet = {
-                                        "sheet_name": "Act zilnica",
                                         "id": str(rid), "data": str(rdata)[:10], "ora": str(ora_curenta),
                                         "firma": str(sel_firma), "masina": str(sel_masina),
                                         "subansamblu": str(sel_subansamblu or "General"), "solutie": str(solutie or ""),
                                         "verificator": str(verificator_nume or ""), "tehnician": str(tehnician_nume or ""),
-                                        "piese utilizate": str(piese_utilizate_str), "necesar piese": str(piese_necesare_str),
-                                        "stare facturare": "Nefacturat"
+                                        "piese utilizate": str(piese_utilizate_str), "necesar piese": str(piese_necesare_str)
                                     }
                                     req_data = json.dumps(payload_sheet).encode('utf-8')
                                     req = urllib.request.Request(sheet_url, data=req_data, headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'})
                                     with urllib.request.urlopen(req) as response:
                                         response.read().decode('utf-8')
-                                        st.success("Datele au fost trimise cu succes în Google Sheet ('Act zilnica')!")
+                                        st.success("Datele au fost trimise cu succes și în Google Sheet!")
                                 except Exception as e:
                                     st.error(f"Eroare la Google Sheet: {str(e)}")
                         else:
@@ -1025,7 +802,40 @@ with tab_optimizare:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 7: Istoric & Google Sheet
+# TAB 4: Tabelul de Piese
+# ------------------------------------------------------------------------------
+with tab_piese:
+    st.subheader("🔧 Gestiune Piese de Schimb")
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT denumire FROM masini")
+    masini_existente = [row[0] for row in c.fetchall()]
+    
+    with st.form("form_piese", clear_on_submit=True):
+        c1, c2 = st.columns(2)
+        with c1:
+            p_denumire = st.text_input("Denumire Piesă *")
+            p_cod_prod = st.text_input("Cod Producător")
+            p_cod_com = st.text_input("Cod Comercial")
+        with c2:
+            p_masini_alese = st.multiselect("Mașinile pe care se montează", options=masini_existente)
+            p_sub = st.text_input("Subansamblu")
+            p_pret = st.number_input("Preț Achiziție (RON)", min_value=0.0, value=0.0)
+            
+        if st.form_submit_button("💾 Salvează Piesa"):
+            if p_denumire:
+                masini_text_str = ", ".join(p_masini_alese) if p_masini_alese else "General"
+                c.execute("""
+                    INSERT INTO piese (denumire, cod_producator, cod_comercial, masina_montaj, subansamblu, pret_achizitie)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (p_denumire, p_cod_prod, p_cod_com, masini_text_str, p_sub, p_pret))
+                conn.commit()
+                st.success(f"Piesa **{p_denumire}** a fost salvată în Supabase!")
+                st.rerun()
+    conn.close()
+
+# ------------------------------------------------------------------------------
+# TAB 6: Istoric & Google Sheet
 # ------------------------------------------------------------------------------
 with tab_rapoarte:
     st.subheader("📋 Istoric Intervenții")
@@ -1045,17 +855,13 @@ with tab_rapoarte:
                 full_rep = c.fetchone()
                 if full_rep:
                     piese_data = json.loads(full_rep[7]) if full_rep[7] else []
-                    piese_filtrate_raport = [
-                        p for p in piese_data 
-                        if 'manopera' not in p.get('piesa', '').lower() and 'transport' not in p.get('piesa', '').lower()
-                    ]
                     date_pdf = {
                         "id": full_rep[0], "client": full_rep[1], "masina": full_rep[2], "subansamblu": full_rep[3],
-                        "durata": full_rep[4], "cod_eroare": full_rep[5], "stare_finala": full_rep[6], "piese_json": piese_filtrate_raport,
+                        "durata": full_rep[4], "cod_eroare": full_rep[5], "stare_finala": full_rep[6], "piese_json": piese_data,
                         "titlu": full_rep[8], "simptom": full_rep[9], "defect": full_rep[10], "solutie": full_rep[11],
                         "optimizari": full_rep[12], "tehnician": full_rep[13], "verificator": full_rep[14], "data": full_rep[15]
                     }
-                    pdf_bytes = genereaza_pdf(date_pdf, titlu_doc="RAPORT DE INTERVENTIE TEHNICA")
+                    pdf_bytes = genereaza_pdf(date_pdf)
                     
                     st.download_button(label=f"📥 Descarcă PDF Raport #{rid}", data=pdf_bytes, file_name=f"Raport_{rid}.pdf", mime="application/pdf", key=f"dl_{rid}")
     else:
@@ -1063,13 +869,13 @@ with tab_rapoarte:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 8: Setări
+# TAB 7: Setări
 # ------------------------------------------------------------------------------
 with tab_setari:
     st.subheader("⚙️ Setări Aplicație & Conectare")
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician, tva, pass FROM setari LIMIT 1")
+    c.execute("SELECT nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician FROM setari LIMIT 1")
     current_setari = c.fetchone()
     
     with st.form("form_setari"):
@@ -1087,27 +893,12 @@ with tab_setari:
         s_sheet = st.text_input("Google Sheet URL", value=current_setari[11] if current_setari else "")
         s_email_teh = st.text_input("E-mail Tehnician", value=current_setari[12] if current_setari and len(current_setari) > 12 and current_setari[12] else "")
         
-        # Preluare sigură pentru TVA (indexul 13)
-        val_tva_init = 21.0
-        if current_setari and len(current_setari) > 13 and current_setari[13] is not None:
-            try:
-                val_tva_init = float(current_setari[13])
-            except (ValueError, TypeError):
-                val_tva_init = 21.0
-        s_tva = st.number_input("TVA (%)", min_value=0.0, value=val_tva_init)
-        
-        # Preluare sigură pentru parolă (indexul 14)
-        val_pass_init = "nexus123"
-        if current_setari and len(current_setari) > 14 and current_setari[14] is not None:
-            val_pass_init = str(current_setari[14])
-        s_pass = st.text_input("Parolă Acces Piese & Devize (Pass)", type="password", value=val_pass_init)
-        
         if st.form_submit_button("💾 Salvează Setările"):
             c.execute("DELETE FROM setari")
             c.execute("""
-                INSERT INTO setari (nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician, tva, pass)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (s_nume, s_cui, s_reg, s_adresa, s_banca, s_iban, s_swep, s_srv, s_prt, s_usr, s_pwd, s_sheet, s_email_teh, s_tva, s_pass))
+                INSERT INTO setari (nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (s_nume, s_cui, s_reg, s_adresa, s_banca, s_iban, s_swep, s_srv, s_prt, s_usr, s_pwd, s_sheet, s_email_teh))
             conn.commit()
             st.success("Setările au fost salvate cu succes în Supabase!")
             st.rerun()
