@@ -350,7 +350,7 @@ def genereaza_pdf(data):
 # ------------------------------------------------------------------------------
 # 4. Funcție Trimitere Email prin SMTP
 # ------------------------------------------------------------------------------
-def trimite_email_raport(destinatar, subiect, corp_mesaj, pdf_bytes, nume_fisier):
+def trimite_email_raport(destinatari, subiect, corp_mesaj, pdf_bytes, nume_fisier):
     setari = get_setari()
     smtp_srv = setari[7]
     smtp_p = setari[8]
@@ -360,7 +360,13 @@ def trimite_email_raport(destinatar, subiect, corp_mesaj, pdf_bytes, nume_fisier
     msg = EmailMessage()
     msg['Subject'] = subiect
     msg['From'] = smtp_u if smtp_u else "contact@nexusindustrial.ro"
-    msg['To'] = destinatar
+    
+    # Dacă primesti un șir cu adrese separate prin virgulă, le setăm corespunzător
+    if isinstance(destinatari, str):
+        # Curățăm spațiile albe dacă există
+        destinatari = [d.strip() for d in destinatari.split(',')]
+    
+    msg['To'] = ", ".join(destinatari)
     msg.set_content(corp_mesaj)
     
     if pdf_bytes:
@@ -372,7 +378,7 @@ def trimite_email_raport(destinatar, subiect, corp_mesaj, pdf_bytes, nume_fisier
             if smtp_pwd and smtp_u:
                 server.login(smtp_u, smtp_pwd)
                 server.send_message(msg)
-                return True, "E-mailul a fost trimis cu succes!"
+                return True, "E-mailurile au fost trimise cu succes!"
             else:
                 return False, "Setările SMTP (User sau Parolă) nu sunt completate."
     except Exception as e:
