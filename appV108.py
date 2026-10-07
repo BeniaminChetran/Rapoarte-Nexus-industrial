@@ -1,6 +1,6 @@
 #-----------------------------------------------------------------------------------
 # APLICATIE STREAMLIT OPTIMIZATĂ PENTRU SUPABASE (POSTGRESQL)
-functional in github appV108.py
+#functional in github appV108.py
 #-----------------------------------------------------------------------------------
 
 import os
