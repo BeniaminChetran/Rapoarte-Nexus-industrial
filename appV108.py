@@ -847,7 +847,10 @@ with tab_deviz:
         tva_deviz = subtotal_deviz_ron * (tva_setat / 100.0)
         total_cu_tva_deviz = subtotal_deviz_ron + tva_deviz
         
-        st.markdown(f"### 💶 Sumar Financiar (LEI):\n1. Subtotal: **{subtotal_deviz_ron:.2f} LEI**\n2. TVA ({tva_setat}%): **{tva_deviz:.2f} LEI**\nTotal (1+2): **{total_cu_tva_deviz:.2f} LEI**")
+        st.markdown(f"""### 💶 Sumar Financiar (LEI):
+1. Subtotal: **{subtotal_deviz_ron:.2f} LEI**  
+2. TVA ({tva_setat}%): **{tva_deviz:.2f} LEI**  
+Total (1+2): **{total_cu_tva_deviz:.2f} LEI**""")
         
         data_curenta_str = datetime.now().strftime("%d.%m.%Y")
         default_memo = (
