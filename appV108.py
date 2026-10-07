@@ -308,8 +308,16 @@ def genereaza_pdf(data):
     pdf.cell(95, 5, curata_text("Semnatura: ___________________"), 0, 0, 'C')
     pdf.cell(95, 5, curata_text("Semnatura: ___________________"), 0, 1, 'C')
 
-    output = pdf.output()
-    return output if isinstance(output, bytes) else bytes(output, 'latin1')
+   # Gestionare sigură a output-ului PDF indiferent de tipul returnat
+    output = pdf.output(dest='S')
+    if isinstance(output, bytes):
+        return output
+    elif isinstance(output, bytearray):
+        return bytes(output)
+    elif isinstance(output, str):
+        return output.encode('latin1')
+    else:
+        return bytes(output)
 
 # ------------------------------------------------------------------------------
 # 4. Funcție Trimitere Email prin SMTP
