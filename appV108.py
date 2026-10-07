@@ -129,7 +129,7 @@ def init_db():
         )
     ''')
     
-    # 6. Tabel Setări Aplicație & Noile Câmpuri[cite: 15]
+    # 6. Tabel Setări Aplicație & Date Fiscale & SMTP & Email Tehnician
     c.execute('''
         CREATE TABLE IF NOT EXISTS setari (
             id SERIAL PRIMARY KEY,
@@ -144,16 +144,17 @@ def init_db():
             smtp_port INTEGER,
             smtp_user TEXT,
             smtp_pass TEXT,
-            google_sheet_url TEXT
+            google_sheet_url TEXT,
+            email_tehnician TEXT
         )
     ''')
     
     c.execute("SELECT COUNT(*) FROM setari")
     if c.fetchone()[0] == 0:
         c.execute("""
-            INSERT INTO setari (nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, ("Nexus Industrial SRL", "", "", "", "", "", "", "smtp.gmail.com", 587, "", "", ""))
+            INSERT INTO setari (nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, ("Nexus Industrial SRL", "", "", "", "", "", "", "smtp.gmail.com", 587, "", "", "", ""))
     
     conn.commit()
     conn.close()
@@ -163,12 +164,12 @@ init_db()
 def get_setari():
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url FROM setari LIMIT 1")
+    c.execute("SELECT nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician FROM setari LIMIT 1")
     res = c.fetchone()
     conn.close()
     if res:
         return res
-    return ("Nexus Industrial SRL", "", "", "", "", "", "", "smtp.gmail.com", 587, "", "", "")
+    return ("Nexus Industrial SRL", "", "", "", "", "", "", "smtp.gmail.com", 587, "", "", "", "")
 
 # ------------------------------------------------------------------------------
 # 3. Clasă Generare PDF Profesionist
@@ -233,7 +234,7 @@ def genereaza_pdf(data):
     pdf.set_text_color(*SECONDARY)
     pdf.cell(0, 4, curata_text(f"Adresă: {adresa_emitent} | Bancă: {banca_emitent} | IBAN: {iban_emitent} | SWIFT: {swep_emitent}"), 0, 1, 'L')
     
-    # Adăugat spațiu liber suplimentar (ln) pentru a evita suprapunerea
+    # Spațiu liber suplimentar pentru a evita suprapunerea cu linia
     pdf.ln(6)
 
     pdf.set_font('Helvetica', 'B', 11)
@@ -241,7 +242,6 @@ def genereaza_pdf(data):
     pdf.cell(100, 7, curata_text(f"Nr. Inregistrare: #{data['id']}"), 0, 0)
     pdf.cell(90, 7, curata_text(f"Data: {str(data['data'])[:10]}"), 0, 1, 'R')
     
-    # Coborât linia de delimitare corespunzător noului spațiu
     pdf.line(10, pdf.get_y() + 2, 200, pdf.get_y() + 2)
     pdf.ln(6)
 
@@ -271,7 +271,6 @@ def genereaza_pdf(data):
     pdf.cell(90, 5, curata_text(f"Stare Finala: {data['stare_finala']}"), 0, 1)
     
     pdf.ln(8)
-    # Restul funcției rămâne neschimbat...
 
     def adauga_sectiune(titlu, continut):
         pdf.set_font('Helvetica', 'B', 10)
@@ -348,25 +347,28 @@ def genereaza_pdf(data):
         return str(output).encode('latin1', errors='ignore')
 
 # ------------------------------------------------------------------------------
-# 4. Funcție Trimitere Email prin SMTP
+# 4. Funcție Trimitere Email prin SMTP (Client + Tehnician + contact@nexusindustrial.ro)
 # ------------------------------------------------------------------------------
-def trimite_email_raport(destinatari, subiect, corp_mesaj, pdf_bytes, nume_fisier):
+def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume_fisier):
     setari = get_setari()
     smtp_srv = setari[7]
     smtp_p = setari[8]
     smtp_u = setari[9]
     smtp_pwd = setari[10]
+    email_tehnician = setari[12] if len(setari) > 12 else ""
     
     msg = EmailMessage()
     msg['Subject'] = subiect
     msg['From'] = smtp_u if smtp_u else "contact@nexusindustrial.ro"
     
-    # Dacă primesti un șir cu adrese separate prin virgulă, le setăm corespunzător
-    if isinstance(destinatari, str):
-        # Curățăm spațiile albe dacă există
-        destinatari = [d.strip() for d in destinatari.split(',')]
+    # Colectare destinatari multipli
+    destinatari = [destinatar_client]
+    if email_tehnician:
+        destinatari.append(email_tehnician)
+    destinatari.append("contact@nexusindustrial.ro")
     
-    msg['To'] = ", ".join(destinatari)
+    destinatari_unice = [d.strip() for d in destinatari if d and d.strip()]
+    msg['To'] = ", ".join(destinatari_unice)
     msg.set_content(corp_mesaj)
     
     if pdf_bytes:
@@ -378,7 +380,7 @@ def trimite_email_raport(destinatari, subiect, corp_mesaj, pdf_bytes, nume_fisie
             if smtp_pwd and smtp_u:
                 server.login(smtp_u, smtp_pwd)
                 server.send_message(msg)
-                return True, "E-mailurile au fost trimise cu succes!"
+                return True, f"E-mailul a fost trimis cu succes către: {', '.join(destinatari_unice)}"
             else:
                 return False, "Setările SMTP (User sau Parolă) nu sunt completate."
     except Exception as e:
@@ -872,7 +874,7 @@ with tab_setari:
     st.subheader("⚙️ Setări Aplicație & Conectare")
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url FROM setari LIMIT 1")
+    c.execute("SELECT nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician FROM setari LIMIT 1")
     current_setari = c.fetchone()
     
     with st.form("form_setari"):
@@ -888,13 +890,14 @@ with tab_setari:
         s_usr = st.text_input("User Gmail", value=current_setari[9] if current_setari else "")
         s_pwd = st.text_input("App Password", type="password", value=current_setari[10] if current_setari else "")
         s_sheet = st.text_input("Google Sheet URL", value=current_setari[11] if current_setari else "")
+        s_email_teh = st.text_input("E-mail Tehnician", value=current_setari[12] if current_setari and len(current_setari) > 12 and current_setari[12] else "")
         
         if st.form_submit_button("💾 Salvează Setările"):
             c.execute("DELETE FROM setari")
             c.execute("""
-                INSERT INTO setari (nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (s_nume, s_cui, s_reg, s_adresa, s_banca, s_iban, s_swep, s_srv, s_prt, s_usr, s_pwd, s_sheet))
+                INSERT INTO setari (nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (s_nume, s_cui, s_reg, s_adresa, s_banca, s_iban, s_swep, s_srv, s_prt, s_usr, s_pwd, s_sheet, s_email_teh))
             conn.commit()
             st.success("Setările au fost salvate cu succes în Supabase!")
             st.rerun()
