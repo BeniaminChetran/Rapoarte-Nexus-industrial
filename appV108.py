@@ -321,7 +321,7 @@ def genereaza_pdf(data, titlu_doc="RAPORT DE INTERVENTIE TEHNICA"):
             pdf.cell(190, 6, curata_text("Nici o piesă adăugată"), 1, 1, 'C')
         pdf.ln(2)
         
-        tva_procent = data.get('tva_procent', 19.0)
+        tva_procent = data.get('tva_procent', 21.0)
         val_tva = subtotal_val * (tva_procent / 100.0)
         total_general = subtotal_val + val_tva
         
