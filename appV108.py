@@ -33,7 +33,7 @@ def get_db_connection():
 # 1. Configurare Pagină & Stil UI (Optimizat și pentru Mobil)
 # ------------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Nexus Industrial Software",
+    page_title="Nexus Industrial - Sistem Mentenanță",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -83,7 +83,7 @@ def init_db():
         )
     ''')
     
-    # 3. Tabel Piese de Schimb (Unificat cu preț achiziție unic)
+    # 3. Tabel Piese de Schimb (actualizat cu preț intrare, ieșire, ad. com., livrare)
     c.execute('''
         CREATE TABLE IF NOT EXISTS piese (
             id SERIAL PRIMARY KEY,
@@ -92,7 +92,8 @@ def init_db():
             cod_comercial TEXT,
             masina_montaj TEXT,
             subansamblu TEXT,
-            pret_achizitie REAL DEFAULT 0,
+            pret_achizitie REAL,
+            pret_intrare REAL DEFAULT 0,
             pret_iesire REAL DEFAULT 0,
             ad_com REAL DEFAULT 0,
             livrare REAL DEFAULT 0
@@ -148,7 +149,7 @@ def init_db():
         )
     ''')
     
-    # 6. Tabel Setări Aplicație (inclusiv TVA, Pass și Curs BNR)
+    # 6. Tabel Setări Aplicație (inclusiv TVA și Pass mascat)
     c.execute('''
         CREATE TABLE IF NOT EXISTS setari (
             id SERIAL PRIMARY KEY,
@@ -166,17 +167,16 @@ def init_db():
             google_sheet_url TEXT,
             email_tehnician TEXT,
             tva REAL DEFAULT 21.0,
-            pass TEXT DEFAULT 'nexus123',
-            curs_bnr REAL DEFAULT 4.97
+            pass TEXT DEFAULT 'nexus123'
         )
     ''')
     
     c.execute("SELECT COUNT(*) FROM setari")
     if c.fetchone()[0] == 0:
         c.execute("""
-            INSERT INTO setari (nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician, tva, pass, curs_bnr)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, ("Nexus Industrial SRL", "", "", "", "", "", "", "smtp.gmail.com", 587, "", "", "", "", 21.0, "nexus123", 4.97))
+            INSERT INTO setari (nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician, tva, pass)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, ("Nexus Industrial SRL", "", "", "", "", "", "", "smtp.gmail.com", 587, "", "", "", "", 21.0, "nexus123"))
     
     conn.commit()
     conn.close()
@@ -186,12 +186,12 @@ init_db()
 def get_setari():
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician, tva, pass, curs_bnr FROM setari LIMIT 1")
+    c.execute("SELECT nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician, tva, pass FROM setari LIMIT 1")
     res = c.fetchone()
     conn.close()
     if res:
         return res
-    return ("Nexus Industrial SRL", "", "", "", "", "", "", "smtp.gmail.com", 587, "", "", "", 21.0, "nexus123", 4.97)
+    return ("Nexus Industrial SRL", "", "", "", "", "", "", "smtp.gmail.com", 587, "", "", "", 21.0, "nexus123")
 
 # ------------------------------------------------------------------------------
 # 3. Clasă Generare PDF Profesionist (Deviz, Oferta de pret, Raport)
@@ -219,7 +219,7 @@ class RaportPDF(FPDF):
         self.set_y(-15)
         self.set_font('Helvetica', 'I', 8)
         self.set_text_color(128, 128, 128)
-        self.cell(0, 10, 'Pagina ' + str(self.page_no()) + ' | Generat automat - Nexus Industrial Software', 0, 0, 'C')
+        self.cell(0, 10, 'Pagina ' + str(self.page_no()) + ' | Generat automat - Nexus Industrial', 0, 0, 'C')
 
 def curata_text(text):
     if not text:
@@ -250,7 +250,6 @@ def genereaza_pdf(data, titlu_doc="RAPORT DE INTERVENTIE TEHNICA"):
     banca_emitent = setari_pdf[4]
     iban_emitent = setari_pdf[5]
     swep_emitent = setari_pdf[6]
-    curs_bnr_val = float(setari_pdf[15]) if len(setari_pdf) > 15 and setari_pdf[15] is not None else 4.97
 
     pdf.set_font('Helvetica', 'B', 9)
     pdf.set_text_color(*PRIMARY)
@@ -288,10 +287,11 @@ def genereaza_pdf(data, titlu_doc="RAPORT DE INTERVENTIE TEHNICA"):
     
     pdf.ln(8)
 
+    # Dacă este Deviz sau Ofertă de preț
     if titlu_doc in ["Deviz", "Oferta de pret"]:
         pdf.set_font('Helvetica', 'B', 10)
         pdf.set_text_color(*SECONDARY)
-        pdf.cell(0, 6, curata_text("TABEL PIESE / SERVICII OFERTATE (LEI)"), 0, 1)
+        pdf.cell(0, 6, curata_text("TABEL PIESE / SERVICII OFERTATE"), 0, 1)
         pdf.set_draw_color(*SECONDARY)
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.ln(2)
@@ -299,8 +299,8 @@ def genereaza_pdf(data, titlu_doc="RAPORT DE INTERVENTIE TEHNICA"):
         pdf.set_font('Helvetica', 'B', 9)
         pdf.cell(80, 6, curata_text("Denumire Piesă / Serviciu"), 1, 0, 'C', fill=True)
         pdf.cell(25, 6, curata_text("Cantitate"), 1, 0, 'C', fill=True)
-        pdf.cell(40, 6, curata_text("Preț Unitar (LEI)"), 1, 0, 'C', fill=True)
-        pdf.cell(45, 6, curata_text("Preț (LEI)"), 1, 1, 'C', fill=True)
+        pdf.cell(40, 6, curata_text("Preț Unitar (EUR)"), 1, 0, 'C', fill=True)
+        pdf.cell(45, 6, curata_text("Valoare (EUR)"), 1, 1, 'C', fill=True)
         
         pdf.set_font('Helvetica', '', 9)
         piese_list = data.get('piese_json', [])
@@ -309,13 +309,13 @@ def genereaza_pdf(data, titlu_doc="RAPORT DE INTERVENTIE TEHNICA"):
             for p in piese_list:
                 p_nume = p.get('piesa', '')
                 p_cant = p.get('cantitate', 1)
-                p_pret_ron = p.get('pret_iesire', 0) * curs_bnr_val
-                p_val = p_cant * p_pret_ron
+                p_pret = p.get('pret_iesire', 0)
+                p_val = p_cant * p_pret
                 subtotal_val += p_val
                 
                 pdf.cell(80, 6, curata_text(p_nume), 1, 0, 'L')
                 pdf.cell(25, 6, str(p_cant), 1, 0, 'C')
-                pdf.cell(40, 6, f"{p_pret_ron:.2f}", 1, 0, 'R')
+                pdf.cell(40, 6, f"{p_pret:.2f}", 1, 0, 'R')
                 pdf.cell(45, 6, f"{p_val:.2f}", 1, 1, 'R')
         else:
             pdf.cell(190, 6, curata_text("Nici o piesă adăugată"), 1, 1, 'C')
@@ -326,11 +326,11 @@ def genereaza_pdf(data, titlu_doc="RAPORT DE INTERVENTIE TEHNICA"):
         total_general = subtotal_val + val_tva
         
         pdf.set_font('Helvetica', 'B', 9)
-        pdf.cell(145, 6, curata_text("1. Subtotal (LEI):"), 1, 0, 'R')
+        pdf.cell(145, 6, curata_text("Subtotal (EUR):"), 1, 0, 'R')
         pdf.cell(45, 6, f"{subtotal_val:.2f}", 1, 1, 'R')
-        pdf.cell(145, 6, curata_text(f"2. TVA ({tva_procent}%):"), 1, 0, 'R')
+        pdf.cell(145, 6, curata_text(f"TVA ({tva_procent}%):"), 1, 0, 'R')
         pdf.cell(45, 6, f"{val_tva:.2f}", 1, 1, 'R')
-        pdf.cell(145, 6, curata_text("TOTAL (1+2) (LEI):"), 1, 0, 'R')
+        pdf.cell(145, 6, curata_text("TOTAL GENERAL CU TVA (EUR):"), 1, 0, 'R')
         pdf.cell(45, 6, f"{total_general:.2f}", 1, 1, 'R')
         pdf.ln(6)
         
@@ -342,6 +342,7 @@ def genereaza_pdf(data, titlu_doc="RAPORT DE INTERVENTIE TEHNICA"):
             pdf.set_text_color(0, 0, 0)
             pdf.multi_cell(0, 4, curata_text(data.get('memo')))
     else:
+        # Raport clasic intervenție
         def adauga_sectiune(titlu, continut):
             pdf.set_font('Helvetica', 'B', 10)
             pdf.set_text_color(*SECONDARY)
@@ -416,14 +417,14 @@ def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume
 st.sidebar.title("📌 Nexus Control Panel")
 st.sidebar.text("Sistem integrat activ")
 
-if st.sidebar.button("🛑 Închide Serverul Python", type="primary", key="inchide_server_unic_btn"):
+if st.sidebar.button("🛑 Închide Serverul Python", type="primary", key="inchide_server_btn"):
     st.sidebar.warning("Se închide serverul...")
     os._exit(0)
 
 st.sidebar.markdown("---")
 st.sidebar.info("Aplicație optimizată pentru mobil și desktop.")
 
-st.title("Nexus Industrial Software")
+st.title("🛠️ Sistem Integrat de Mentenanță - Nexus Industrial (Supabase)")
 
 tab_activitati, tab_optimizare, tab_masini, tab_piese, tab_firme, tab_deviz, tab_rapoarte, tab_setari = st.tabs([
     "📝 1. Activități", 
@@ -599,168 +600,82 @@ with tab_masini:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 4: Tabelul de Piese (Optimizat 10.000+ piese & Calcul Instantaneu Fără Formular Restrictiv)
+# TAB 4: Tabelul de Piese (cu parolă pentru prețuri și rubrici noi)
 # ------------------------------------------------------------------------------
 with tab_piese:
     st.subheader("🔧 Gestiune Piese de Schimb")
     
+    # Verificare parolă pentru vizibilitate rubrici financiare
     if "acces_piese_fin" not in st.session_state:
         st.session_state["acces_piese_fin"] = False
+        
+    if not st.session_state["acces_piese_fin"]:
+        pass_input = st.text_input("Introduceți parola pentru a vizualiza prețurile și detaliile avansate:", type="password")
+        setari_curente = get_setari()
+        parola_corecta = setari_curente[13] if len(setari_curente) > 13 else "nexus123"
+        if st.button("Deblocare Secțiune Financiară"):
+            if pass_input == parola_corecta:
+                st.session_state["acces_piese_fin"] = True
+                st.success("Acces acordat!")
+                st.rerun()
+            else:
+                st.error("Parolă incorectă!")
+    else:
+        st.success("🔒 Secțiunea financiară este deblocată.")
+        if st.button("Blocare Acces"):
+            st.session_state["acces_piese_fin"] = False
+            st.rerun()
 
     conn = get_db_connection()
     c = conn.cursor()
     c.execute("SELECT denumire FROM masini")
     masini_existente = [row[0] for row in c.fetchall()]
     
-    setari_actuale = get_setari()
-    curs_bnr_val = float(setari_actuale[15]) if len(setari_actuale) > 15 and setari_actuale[15] is not None else 4.97
-    
-    # 1. Adăugare Piesă Nouă (Container simplu fără st.form pentru reîmprospătare instantanee)
-    with st.container():
-        st.markdown("##### ➕ Adaugă Piesă Nouă")
+    with st.form("form_piese", clear_on_submit=True):
         c1, c2 = st.columns(2)
         with c1:
-            p_denumire = st.text_input("Denumire Piesă *", key="nou_p_den")
-            p_cod_prod = st.text_input("Cod Producător", key="nou_p_cprod")
-            p_cod_com = st.text_input("Cod Comercial", key="nou_p_ccom")
-            p_sub = st.text_input("Subansamblu", key="nou_p_sub")
+            p_denumire = st.text_input("Denumire Piesă *")
+            p_cod_prod = st.text_input("Cod Producător")
+            p_cod_com = st.text_input("Cod Comercial")
+            p_sub = st.text_input("Subansamblu")
         with c2:
-            p_masini_alese = st.multiselect("Mașinile pe care se montează", options=masini_existente, key="nou_p_masini")
+            p_masini_alese = st.multiselect("Mașinile pe care se montează", options=masini_existente)
+            p_pret = st.number_input("Preț (RON)", min_value=0.0, value=0.0)
+            p_intrare = st.number_input("Preț Intrare", min_value=0.0, value=0.0) if st.session_state["acces_piese_fin"] else 0.0
+            p_iesire = st.number_input("Preț Ieșire", min_value=0.0, value=0.0) if st.session_state["acces_piese_fin"] else 0.0
+            p_adcom = st.number_input("Ad. Com. (Adaos Comercial %)", min_value=0.0, value=0.0) if st.session_state["acces_piese_fin"] else 0.0
+            p_livrare = st.number_input("Livrare (zile)", min_value=0, value=1) if st.session_state["acces_piese_fin"] else 1
             
-            if st.session_state["acces_piese_fin"]:
-                p_achizitie = st.number_input("Preț Achiziție (EUR)", min_value=0.0, value=0.0, key="p_achizitie_form")
-                p_adcom = st.number_input("Ad. Com. (Adaos Comercial %)", min_value=0.0, value=0.0, key="p_adcom_form")
-                
-                # Calcul instant preț vânzare (blocat la scriere, afișat dinamic)
-                p_iesire = p_achizitie * (1 + p_adcom / 100.0)
-                st.info(f"🔒 Preț Vânzare (calculat instantaneu și blocat): **{p_iesire:.2f} EUR**")
-            else:
-                p_achizitie = 0.0
-                p_adcom = 0.0
-                p_iesire = st.number_input("Preț Vânzare (EUR)", min_value=0.0, value=0.0, key="p_iesire_simplu")
-                
-            p_livrare = st.number_input("Livrare (zile)", min_value=0, value=1, key="nou_p_liv")
-            
-        if st.button("💾 Salvează Piesa Nouă", key="btn_salv_piesa_noua"):
+        if st.form_submit_button("💾 Salvează Piesa"):
             if p_denumire:
                 masini_text_str = ", ".join(p_masini_alese) if p_masini_alese else "General"
                 c.execute("""
-                    INSERT INTO piese (denumire, cod_producator, cod_comercial, masina_montaj, subansamblu, pret_achizitie, pret_iesire, ad_com, livrare)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (p_denumire, p_cod_prod, p_cod_com, masini_text_str, p_sub, p_achizitie, p_iesire, p_adcom, p_livrare))
+                    INSERT INTO piese (denumire, cod_producator, cod_comercial, masina_montaj, subansamblu, pret_achizitie, pret_intrare, pret_iesire, ad_com, livrare)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (p_denumire, p_cod_prod, p_cod_com, masini_text_str, p_sub, p_pret, p_intrare, p_iesire, p_adcom, p_livrare))
                 conn.commit()
                 st.success(f"Piesa **{p_denumire}** a fost salvată în Supabase!")
                 st.rerun()
-            else:
-                st.error("Introduceți cel puțin denumirea piesei.")
     
     st.markdown("---")
-    st.subheader("🔎 Căutare și Selectare Piesă (Catalog 10.000+ Piese)")
-    st.caption("ℹ️ Pentru a asigura performanța maximă cu un volum mare de piese, utilizați căutarea de mai jos pentru a găsi rapid piesa dorită.")
-    
-    termen_cautare_piese = st.text_input("🔍 Caută piesă după denumire, cod producător sau cod comercial:", placeholder="Scrie textul de căutare...", key="search_piese_10k")
-    
-    piese_gasite = []
-    if termen_cautare_piese.strip():
-        q_search = f"%{termen_cautare_piese.strip()}%"
-        c.execute("""
-            SELECT id, denumire, cod_producator, cod_comercial, masina_montaj, subansamblu, pret_iesire, pret_achizitie, ad_com 
-            FROM piese 
-            WHERE denumire ILIKE %s OR cod_producator ILIKE %s OR cod_comercial ILIKE %s
-            LIMIT 50
-        """, (q_search, q_search, q_search))
-        piese_gasite = c.fetchall()
-    
-    if termen_cautare_piese.strip() and piese_gasite:
-        st.markdown(f"Rezultate găsite: **{len(piese_gasite)}** piese.")
-        
-        opțiuni_select_piesa = {f"ID: {p[0]} | {p[1]} (Cod Prod: {p[2] or 'N/A'})": p[0] for p in piese_gasite}
-        piesa_selectata_label = st.selectbox("Selectează piesa dorită din lista de rezultate:", options=list(opțiuni_select_piesa.keys()), key="select_piesa_rezult")
-        
-        if piesa_selectata_label:
-            pid_ales = opțiuni_select_piesa[piesa_selectata_label]
-            p_curenta_det = [p for p in piese_gasite if p[0] == pid_ales][0]
-            
-            pid, p_den, p_cprod, p_ccom, p_mmas, p_subans, p_preties, p_pretachiz, p_adcomval = p_curenta_det
-            pret_iesire_ron = (p_preties if p_preties is not None else 0.0) * curs_bnr_val
-            
-            st.markdown(f"#### ⚙️ Detalii & Modificare Piesă (ID: {pid})")
-            st.write(f"**Denumire:** {p_den} | **Preț Vânzare:** {pret_iesire_ron:.2f} LEI ({p_preties or 0.0} EUR)")
-            
-            # Secțiunea de modificare punctuală menținută deschisă (fără formular restrictiv de tip st.form)
-            if st.session_state["acces_piese_fin"]:
-                with st.container():
-                    st.markdown("##### 📝 Modificare Piesă (Secțiune Avansată Deblocată)")
-                    mp_den = st.text_input("Denumire", value=p_den, key=f"mp_den_{pid}")
-                    mp_cprod = st.text_input("Cod Producător", value=p_cprod or "", key=f"mp_cp_{pid}")
-                    mp_ccom = st.text_input("Cod Comercial", value=p_ccom or "", key=f"mp_cc_{pid}")
-                    mp_mmas = st.text_input("Mașină Montaj", value=p_mmas or "", key=f"mp_mm_{pid}")
-                    mp_sub = st.text_input("Subansamblu", value=p_subans or "", key=f"mp_sub_{pid}")
-                    
-                    mp_achizitie = st.number_input("Preț Achiziție (EUR)", value=float(p_pretachiz or 0.0), key=f"mp_int_{pid}")
-                    mp_adcom = st.number_input("Adaos Comercial (%)", value=float(p_adcomval or 0.0), key=f"mp_adc_{pid}")
-                    
-                    # Preț vânzare calculat instant și blocat la editare manuală directă
-                    mp_iesire = mp_achizitie * (1 + mp_adcom / 100.0)
-                    st.info(f"🔒 Preț Vânzare (calculat instantaneu și blocat la editare): **{mp_iesire:.2f} EUR**")
-                    
-                    col_p1, col_p2 = st.columns(2)
-                    with col_p1:
-                        if st.button("🔄 Actualizează Piesa", key=f"btn_act_p_{pid}"):
-                            c.execute("""
-                                UPDATE piese SET denumire=%s, cod_producator=%s, cod_comercial=%s, masina_montaj=%s, subansamblu=%s, pret_iesire=%s, pret_achizitie=%s, ad_com=%s
-                                WHERE id=%s
-                            """, (mp_den, mp_cprod, mp_ccom, mp_mmas, mp_sub, mp_iesire, mp_achizitie, mp_adcom, pid))
-                            conn.commit()
-                            st.success("Piesa a fost actualizată cu succes!")
-                    with col_p2:
-                        if st.button("🗑️ Șterge Piesa", key=f"btn_del_p_{pid}"):
-                            c.execute("DELETE FROM piese WHERE id=%s", (pid,))
-                            conn.commit()
-                            st.success("Piesa a fost ștearsă!")
-                            st.rerun()
-            else:
-                st.warning("🔒 Pentru a putea **modifica** sau vedea prețul de achiziție / adaosul comercial al acestei piese, deblocați secțiunea avansată de mai jos cu parola.")
-    elif termen_cautare_piese.strip():
-        st.info("Nu a fost găsită nicio piesă conform căutării.")
+    st.subheader("📋 Catalog Piese Înregistrate")
+    if st.session_state["acces_piese_fin"]:
+        c.execute("SELECT id, denumire, cod_producator, cod_comercial, masina_montaj, pret_intrare, pret_iesire, ad_com, livrare FROM piese")
+        piese_db = c.fetchall()
+        for p in piese_db:
+            st.write(f"🔧 **{p[1]}** | Cod: {p[2]} | Intrare: {p[5]} | Ieșire: {p[6]} | Adaos: {p[7]}% | Livrare: {p[8]} zile")
     else:
-        st.info("💡 Introduceți un termen în caseta de căutare de mai sus pentru a găsi și selecta piesa dorită.")
-
-    st.markdown("---")
-    
-    # 2. Secțiunea Securizată la FINALUL paginii Tab 4
-    st.subheader("🔐 Secțiune Securizată (Deblocare Detalii Avansate & Modificare Piese)")
-    with st.expander("🔑 Deblocare Preț de Achiziție, Adaos Comercial & Drepturi de Modificare", expanded=not st.session_state["acces_piese_fin"]):
-        if not st.session_state["acces_piese_fin"]:
-            pass_input_fin = st.text_input("Introduceți parola de administrator pentru piese:", type="password", key="pass_input_fin_piese_final")
-            
-            conn_temp = get_db_connection()
-            c_temp = conn_temp.cursor()
-            c_temp.execute("SELECT pass FROM setari LIMIT 1")
-            res_pass = c_temp.fetchone()
-            conn_temp.close()
-            parola_corecta = str(res_pass[0]) if res_pass and res_pass[0] is not None else "nexus123"
-            
-            if st.button("Deblocare Secțiune Avansată Piese", key="btn_deb_piese_final"):
-                if pass_input_fin == parola_corecta:
-                    st.session_state["acces_piese_fin"] = True
-                    st.success("Acces avansat acordat cu succes!")
-                    st.rerun()
-                else:
-                    st.error("Parolă incorectă!")
-        else:
-            st.success("🔒 Secțiunea avansată este momentan DEBLOCATĂ. Aveți acces la prețurile de achiziție, adaos comercial și modificarea pieselor.")
-            if st.button("Blocare Acces Avansat", key="btn_bloc_piese_final"):
-                st.session_state["acces_piese_fin"] = False
-                st.rerun()
-                
+        c.execute("SELECT denumire, cod_producator, masina_montaj FROM piese")
+        piese_db = c.fetchall()
+        for p in piese_db:
+            st.write(f"🔧 **{p[0]}** | Cod: {p[1]} | Mașină: {p[2]}")
     conn.close()
 
 # ------------------------------------------------------------------------------
 # TAB 6: Deviz & Ofertă de Preț
 # ------------------------------------------------------------------------------
 with tab_deviz:
-    st.subheader("🧮 Generare Deviz de Calcul & Ofertă de Preț (în LEI la curs BNR)")
+    st.subheader("🧮 Generare Deviz de Calcul & Ofertă de Preț")
     conn = get_db_connection()
     c = conn.cursor()
     
@@ -778,62 +693,35 @@ with tab_deviz:
         masini_deviz = [row[0] for row in c.fetchall()]
         sel_masina_deviz = st.selectbox("Selectează Mașina / Echipamentul (Opțional)", options=["General"] + masini_deviz, key="deviz_masina")
         
+        # Preluare TVA din setări
         setari_val = get_setari()
         try:
             tva_setat = float(setari_val[14]) if len(setari_val) > 14 and setari_val[14] is not None else 21.0
         except (ValueError, TypeError):
             tva_setat = 21.0
-            
-        try:
-            curs_bnr_val = float(setari_val[15]) if len(setari_val) > 15 and setari_val[15] is not None else 4.97
-        except (ValueError, TypeError):
-            curs_bnr_val = 4.97
-        
-        st.markdown(f"ℹ️ **Curs valutar BNR utilizat:** 1 EUR = {curs_bnr_val:.4f} LEI")
         
         st.markdown("##### 🛒 Selectare Piese / Servicii pentru Deviz")
         if "randuri_deviz" not in st.session_state:
             st.session_state["randuri_deviz"] = [{"piesa": "", "cantitate": 1, "pret_iesire": 0.0}]
             
-        # Preluare din tabelul piese din baza de date (denumire, pret_iesire, pret_achizitie)
-        c.execute("SELECT denumire, pret_iesire, pret_achizitie FROM piese")
+        c.execute("SELECT denumire, pret_iesire FROM piese")
         catalog_piese_raw = c.fetchall()
-        
-        # Dicționar robust pentru prețuri
-        catalog_piese_dict = {}
-        for row in catalog_piese_raw:
-            p_den_db = row[0]
-            p_pret_db = 0.0
-            for val_p in [row[1], row[2]]:
-                if val_p is not None and float(val_p) > 0:
-                    p_pret_db = float(val_p)
-                    break
-            catalog_piese_dict[p_den_db] = p_pret_db
-            
+        catalog_piese_dict = {row[0]: row[1] for row in catalog_piese_raw}
         catalog_nume_piese = list(catalog_piese_dict.keys())
         
         for idx, rd in enumerate(st.session_state["randuri_deviz"]):
             cols_d = st.columns([3, 1, 2, 2, 1])
             with cols_d[0]:
-                p_selectata_nou = st.selectbox(f"Piesă/Serviciu #{idx+1}", options=["Selectează..."] + catalog_nume_piese, key=f"d_sel_{idx}")
-                if p_selectata_nou != st.session_state["randuri_deviz"][idx]["piesa"]:
-                    st.session_state["randuri_deviz"][idx]["piesa"] = p_selectata_nou
-                    if p_selectata_nou != "Selectează...":
-                        noul_pret_eur = catalog_piese_dict.get(p_selectata_nou, 0.0)
-                        st.session_state["randuri_deviz"][idx]["pret_iesire"] = noul_pret_eur
-                        st.session_state[f"d_pret_{idx}"] = noul_pret_eur * curs_bnr_val
+                st.session_state["randuri_deviz"][idx]["piesa"] = st.selectbox(f"Piesă/Serviciu #{idx+1}", options=["Selectează..."] + catalog_nume_piese, key=f"d_sel_{idx}")
             with cols_d[1]:
                 st.session_state["randuri_deviz"][idx]["cantitate"] = st.number_input("Cant.", min_value=1, value=rd["cantitate"], key=f"d_cant_{idx}")
             with cols_d[2]:
-                val_pret_curent_eur = st.session_state["randuri_deviz"][idx]["pret_iesire"]
-                val_pret_curent_ron = val_pret_curent_eur * curs_bnr_val
-                pret_introdus_ron = st.number_input("Preț Unitar (LEI)", value=float(val_pret_curent_ron), key=f"d_pret_{idx}", format="%.2f")
-                st.session_state["randuri_deviz"][idx]["pret_iesire"] = pret_introdus_ron / curs_bnr_val if curs_bnr_val > 0 else pret_introdus_ron
+                p_curenta = st.session_state["randuri_deviz"][idx]["piesa"]
+                pret_def = catalog_piese_dict.get(p_curenta, 0.0) if p_curenta != "Selectează..." else 0.0
+                st.session_state["randuri_deviz"][idx]["pret_iesire"] = st.number_input("Preț Unitar (EUR)", value=float(pret_def), key=f"d_pret_{idx}")
             with cols_d[3]:
-                pret_unitar_ron = st.session_state["randuri_deviz"][idx]["pret_iesire"] * curs_bnr_val
-                cantitate_val = st.session_state["randuri_deviz"][idx]["cantitate"]
-                val_total_linie_ron = pret_unitar_ron * cantitate_val
-                st.metric("Preț (LEI)", f"{val_total_linie_ron:.2f}")
+                val_total_linie = st.session_state["randuri_deviz"][idx]["cantitate"] * st.session_state["randuri_deviz"][idx]["pret_iesire"]
+                st.metric("Total Linie", f"{val_total_linie:.2f} EUR")
             with cols_d[4]:
                 if st.button("❌ Șterg", key=f"del_d_{idx}"):
                     st.session_state["randuri_deviz"].pop(idx)
@@ -843,20 +731,16 @@ with tab_deviz:
             st.session_state["randuri_deviz"].append({"piesa": "", "cantitate": 1, "pret_iesire": 0.0})
             st.rerun()
             
+        # Calcul subtotal, tva și total
         piese_valide_deviz = [p for p in st.session_state["randuri_deviz"] if p["piesa"] != "Selectează..."]
-        subtotal_deviz_ron = sum([p["cantitate"] * (p["pret_iesire"] * curs_bnr_val) for p in piese_valide_deviz])
-        tva_deviz = subtotal_deviz_ron * (tva_setat / 100.0)
-        total_cu_tva_deviz = subtotal_deviz_ron + tva_deviz
+        subtotal_deviz = sum([p["cantitate"] * p["pret_iesire"] for p in piese_valide_deviz])
+        tva_deviz = subtotal_deviz * (tva_setat / 100.0)
+        total_cu_tva_deviz = subtotal_deviz + tva_deviz
         
-        st.markdown(f"""### 💶 Sumar Financiar (LEI):
-1. Subtotal: **{subtotal_deviz_ron:.2f} LEI**  
-2. TVA ({tva_setat}%): **{tva_deviz:.2f} LEI**  
-Total (1+2): **{total_cu_tva_deviz:.2f} LEI**""")
+        st.markdown(f"### 💶 Sumar Financiar: Subtotal: **{subtotal_deviz:.2f} EUR** | TVA ({tva_setat}%): **{tva_deviz:.2f} EUR** | Total cu TVA: **{total_cu_tva_deviz:.2f} EUR**")
         
-        data_curenta_str = datetime.now().strftime("%d.%m.%Y")
         default_memo = (
-            "Oferta de preț este exprimată în LEI, totalul conține TVA și este valabilă 15 zile.\n"
-            f"Toate prețurile sunt în lei la cursul BNR de azi {data_curenta_str}, valoare curs valutar {curs_bnr_val:.4f} lei și orice modificare a cursului valutar până la acceptarea ofertei va atrage modificarea prețurilor în consecință.\n"
+            "Oferta de preț este exprimată în EURO, totalul conține TVA și este valabilă 15 zile.\n"
             "Termenul de livrare este exprimat în zile lucrătoare și nu s-au luat în calcul zilele nelucrătoare oficiale.\n"
             "În funcție de complexitatea lucrărilor, durata intervenției poate suferi modificări. Acestea vă vor fi comunicate la fața locului.\n"
             "După demontarea grinzii de măsurare mașina de debitat nu mai poate fi utilizată până la finalizarea lucrării.\n"
@@ -867,7 +751,7 @@ Total (1+2): **{total_cu_tva_deviz:.2f} LEI**""")
             "Tranșe 2    30% - la livrarea produselor\n"
             "Tranșe 3    40% - la finalizarea lucrării/punerea în funcțiune"
         )
-        memo_text = st.text_area("Termeni și Condiții / Mențiuni (Memo)", value=default_memo, height=200)
+        memo_text = st.text_area("Termeni și Condiții / Mențiuni (Memo)", value=default_memo, height=180)
         
         col_db1, col_db2, col_db3 = st.columns(3)
         
@@ -891,12 +775,12 @@ Total (1+2): **{total_cu_tva_deviz:.2f} LEI**""")
                 c.execute("""
                     INSERT INTO devize (tip, firma, masina, piese_json, total_valoare, tva_valoare, total_cu_tva, memo)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, ("Deviz / Ofertă", sel_firma_deviz, sel_masina_deviz, json.dumps(piese_valide_deviz, ensure_ascii=False), subtotal_deviz_ron, tva_deviz, total_cu_tva_deviz, memo_text))
+                """, ("Deviz / Ofertă", sel_firma_deviz, sel_masina_deviz, json.dumps(piese_valide_deviz, ensure_ascii=False), subtotal_deviz, tva_deviz, total_cu_tva_deviz, memo_text))
                 conn.commit()
                 
                 pdf_deviz_bytes = genereaza_pdf(data_deviz_struct, titlu_doc="Deviz")
                 subiect_mail = f"Deviz de Calcul / Ofertă - {sel_firma_deviz}"
-                corp_mail = f"Stimate beneficiar,\n\nVă atașăm devizul de calcul pentru echipamentul {sel_masina_deviz}.\n\nEchipa Nexus Industrial Software"
+                corp_mail = f"Stimate beneficiar,\n\nVă atașăm devizul de calcul pentru echipamentul {sel_masina_deviz}.\n\nEchipa Nexus Industrial"
                 
                 success, msg = trimite_email_raport(email_client_deviz, subiect_mail, corp_mail, pdf_deviz_bytes, "Deviz.pdf")
                 if success:
@@ -1027,6 +911,7 @@ with tab_activitati:
                 rdata = full_rep_salvat[15]
                 piese_data_salvate = json.loads(full_rep_salvat[7]) if full_rep_salvat[7] else []
                 
+                # Filtrăm piesele ca să excludem manopera și transportul (case insensitive)
                 piese_filtrate_raport = [
                     p for p in piese_data_salvate 
                     if 'manopera' not in p.get('piesa', '').lower() and 'transport' not in p.get('piesa', '').lower()
@@ -1052,13 +937,13 @@ with tab_activitati:
                 with col_b3:
                     if st.button("📧 Trimite pe Email către Verificator"):
                         subiect = f"Raport de Interventie Tehnica #{rid} - {sel_firma}"
-                        corp = f"Stimate beneficiar ({verificator_nume}),\n\nVă atașăm raportul de intervenție tehnică #{rid} pentru echipamentul {sel_masina}.\n\nEchipa Nexus Industrial Software"
+                        corp = f"Stimate beneficiar ({verificator_nume}),\n\nVă atașăm raportul de intervenție tehnică #{rid} pentru echipamentul {sel_masina}.\n\nEchipa Nexus Industrial"
                         
                         success, msg = trimite_email_raport(email_client_destinatar, subiect, corp, pdf_bytes, f"Raport_{rid}.pdf")
                         if success:
                             st.success(msg)
                             setari_info = get_setari()
-                            sheet_url = setari_info[11]
+                            sheet_url = setari_info[11]  # google_sheet_url
                             if sheet_url:
                                 try:
                                     ora_curenta = datetime.now().strftime("%H:%M:%S")
@@ -1184,17 +1069,17 @@ with tab_setari:
     st.subheader("⚙️ Setări Aplicație & Conectare")
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician, tva, pass, curs_bnr FROM setari LIMIT 1")
+    c.execute("SELECT nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician, tva, pass FROM setari LIMIT 1")
     current_setari = c.fetchone()
     
     with st.form("form_setari"):
-        s_nume = st.text_input("Nume Firma Ta", value=current_setari[0] if current_setari and current_setari[0] else "Nexus Industrial SRL")
+        s_nume = st.text_input("Nume Firma Ta", value=current_setari[0] if current_setari else "Nexus Industrial SRL")
         s_cui = st.text_input("CUI", value=current_setari[1] if current_setari else "")
         s_reg = st.text_input("Nr. Reg. Com.", value=current_setari[2] if current_setari else "")
         s_adresa = st.text_input("Adresă", value=current_setari[3] if current_setari else "")
         s_banca = st.text_input("Bancă", value=current_setari[4] if current_setari else "")
         s_iban = st.text_input("IBAN (Cont)", value=current_setari[5] if current_setari else "")
-        s_swep = st.text_input("SWIFT", value=current_setari[6] if current_setari else "")
+        s_swep = st.text_input("SWEP (SWIFT)", value=current_setari[6] if current_setari else "")
         s_srv = st.text_input("SMTP Server", value=current_setari[7] if current_setari else "smtp.gmail.com")
         s_prt = st.number_input("SMTP Port", value=int(current_setari[8]) if current_setari and current_setari[8] else 587)
         s_usr = st.text_input("User Gmail", value=current_setari[9] if current_setari else "")
@@ -1202,6 +1087,7 @@ with tab_setari:
         s_sheet = st.text_input("Google Sheet URL", value=current_setari[11] if current_setari else "")
         s_email_teh = st.text_input("E-mail Tehnician", value=current_setari[12] if current_setari and len(current_setari) > 12 and current_setari[12] else "")
         
+        # Preluare sigură pentru TVA (indexul 13)
         val_tva_init = 21.0
         if current_setari and len(current_setari) > 13 and current_setari[13] is not None:
             try:
@@ -1210,25 +1096,18 @@ with tab_setari:
                 val_tva_init = 21.0
         s_tva = st.number_input("TVA (%)", min_value=0.0, value=val_tva_init)
         
+        # Preluare sigură pentru parolă (indexul 14)
         val_pass_init = "nexus123"
         if current_setari and len(current_setari) > 14 and current_setari[14] is not None:
             val_pass_init = str(current_setari[14])
         s_pass = st.text_input("Parolă Acces Piese & Devize (Pass)", type="password", value=val_pass_init)
         
-        val_curs_init = 4.97
-        if current_setari and len(current_setari) > 15 and current_setari[15] is not None:
-            try:
-                val_curs_init = float(current_setari[15])
-            except (ValueError, TypeError):
-                val_curs_init = 4.97
-        s_curs = st.number_input("Curs BNR RON/EUR", min_value=0.0, value=val_curs_init, format="%.4f")
-        
         if st.form_submit_button("💾 Salvează Setările"):
             c.execute("DELETE FROM setari")
             c.execute("""
-                INSERT INTO setari (nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician, tva, pass, curs_bnr)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (s_nume, s_cui, s_reg, s_adresa, s_banca, s_iban, s_swep, s_srv, s_prt, s_usr, s_pwd, s_sheet, s_email_teh, s_tva, s_pass, s_curs))
+                INSERT INTO setari (nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician, tva, pass)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (s_nume, s_cui, s_reg, s_adresa, s_banca, s_iban, s_swep, s_srv, s_prt, s_usr, s_pwd, s_sheet, s_email_teh, s_tva, s_pass))
             conn.commit()
             st.success("Setările au fost salvate cu succes în Supabase!")
             st.rerun()
