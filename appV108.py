@@ -1085,7 +1085,7 @@ with tab_setari:
         s_usr = st.text_input("User Gmail", value=current_setari[9] if current_setari else "")
         s_pwd = st.text_input("App Password", type="password", value=current_setari[10] if current_setari else "")
         s_sheet = st.text_input("Google Sheet URL", value=current_setari[11] if current_setari else "")
-        s_email_teh = st.text_input("E-mail Tehnician", value=current_setart[12] if current_setari and len(current_setari) > 12 and current_setari[12] else "" if current_setari else "")
+        s_email_teh = st.text_input("E-mail Tehnician", value=current_setari[12] if current_setari and len(current_setari) > 12 and current_setari[12] else "")
         s_tva = st.number_input("TVA (%)", min_value=0.0, value=float(current_setari[14]) if current_setari and len(current_setari) > 14 and current_setari[14] is not None else 19.0)
         s_pass = st.text_input("Parolă Acces Piese & Devize (Pass)", type="password", value=current_setari[15] if current_setari and len(current_setari) > 15 and current_setari[15] else "nexus123")
         
