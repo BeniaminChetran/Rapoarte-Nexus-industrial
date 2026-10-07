@@ -3492,4 +3492,3 @@ with tab_setari:
             st.success("Setările au fost salvate cu succes!")
             st.rerun()
     conn.close()
-
