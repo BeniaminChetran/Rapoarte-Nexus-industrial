@@ -166,7 +166,7 @@ def init_db():
             smtp_pass TEXT,
             google_sheet_url TEXT,
             email_tehnician TEXT,
-            tva REAL DEFAULT 19.0,
+            tva REAL DEFAULT 21.0,
             pass TEXT DEFAULT 'nexus123'
         )
     ''')
@@ -613,7 +613,7 @@ with tab_piese:
         pass_input = st.text_input("Introduceți parola pentru a vizualiza prețurile și detaliile avansate:", type="password")
         setari_curente = get_setari()
         parola_corecta = setari_curente[13] if len(setari_curente) > 13 else "nexus123"
-        if st.button("Deblocare Secțiune Finanțiară"):
+        if st.button("Deblocare Secțiune Financiară"):
             if pass_input == parola_corecta:
                 st.session_state["acces_piese_fin"] = True
                 st.success("Acces acordat!")
