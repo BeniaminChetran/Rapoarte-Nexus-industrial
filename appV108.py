@@ -819,17 +819,20 @@ with tab_deviz:
                 if p_selectata_nou != st.session_state["randuri_deviz"][idx]["piesa"]:
                     st.session_state["randuri_deviz"][idx]["piesa"] = p_selectata_nou
                     if p_selectata_nou != "Selectează...":
-                        noul_pret = catalog_piese_dict.get(p_selectata_nou, 0.0)
-                        st.session_state["randuri_deviz"][idx]["pret_iesire"] = noul_pret
-                        st.session_state[f"d_pret_{idx}"] = noul_pret
+                        noul_pret_eur = catalog_piese_dict.get(p_selectata_nou, 0.0)
+                        st.session_state["randuri_deviz"][idx]["pret_iesire"] = noul_pret_eur
+                        st.session_state[f"d_pret_{idx}"] = noul_pret_eur * curs_bnr_val
             with cols_d[1]:
                 st.session_state["randuri_deviz"][idx]["cantitate"] = st.number_input("Cant.", min_value=1, value=rd["cantitate"], key=f"d_cant_{idx}")
             with cols_d[2]:
-                val_pret_curent = st.session_state["randuri_deviz"][idx]["pret_iesire"]
-                pret_introdus = st.number_input("Preț Unitar", value=float(val_pret_curent), key=f"d_pret_{idx}", format="%.2f")
-                st.session_state["randuri_deviz"][idx]["pret_iesire"] = pret_introdus
+                val_pret_curent_eur = st.session_state["randuri_deviz"][idx]["pret_iesire"]
+                val_pret_curent_ron = val_pret_curent_eur * curs_bnr_val
+                pret_introdus_ron = st.number_input("Preț Unitar (LEI)", value=float(val_pret_curent_ron), key=f"d_pret_{idx}", format="%.2f")
+                st.session_state["randuri_deviz"][idx]["pret_iesire"] = pret_introdus_ron / curs_bnr_val if curs_bnr_val > 0 else pret_introdus_ron
             with cols_d[3]:
-                val_total_linie_ron = st.session_state["randuri_deviz"][idx]["cantitate"] * st.session_state["randuri_deviz"][idx]["pret_iesire"] * curs_bnr_val
+                pret_unitar_ron = st.session_state["randuri_deviz"][idx]["pret_iesire"] * curs_bnr_val
+                cantitate_val = st.session_state["randuri_deviz"][idx]["cantitate"]
+                val_total_linie_ron = pret_unitar_ron * cantitate_val
                 st.metric("Preț (LEI)", f"{val_total_linie_ron:.2f}")
             with cols_d[4]:
                 if st.button("❌ Șterg", key=f"del_d_{idx}"):
@@ -841,7 +844,7 @@ with tab_deviz:
             st.rerun()
             
         piese_valide_deviz = [p for p in st.session_state["randuri_deviz"] if p["piesa"] != "Selectează..."]
-        subtotal_deviz_ron = sum([p["cantitate"] * p["pret_iesire"] * curs_bnr_val for p in piese_valide_deviz])
+        subtotal_deviz_ron = sum([p["cantitate"] * (p["pret_iesire"] * curs_bnr_val) for p in piese_valide_deviz])
         tva_deviz = subtotal_deviz_ron * (tva_setat / 100.0)
         total_cu_tva_deviz = subtotal_deviz_ron + tva_deviz
         
