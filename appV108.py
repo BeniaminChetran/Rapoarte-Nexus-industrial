@@ -1,6 +1,5 @@
 #-----------------------------------------------------------------------------------
-# APLICATIE STREAMLIT OPTIMIZATĂ PENTRU SUPABASE (POSTGRESQL)
-# functional in github appV108.py
+# APLICATIE STREAMLIT OPTIMIZATĂ PENTRU SUPABASE (POSTGRESQL) - VERSIUNE RAPIDĂ
 #-----------------------------------------------------------------------------------
 
 import os
@@ -84,7 +83,7 @@ def init_db():
         )
     ''')
     
-    # 3. Tabel Piese de Schimb (S-a scos prețul de achiziție)
+    # 3. Tabel Piese de Schimb
     c.execute('''
         CREATE TABLE IF NOT EXISTS piese (
             id SERIAL PRIMARY KEY,
@@ -161,6 +160,7 @@ def init_db():
 
 init_db()
 
+@st.cache_data(ttl=60)
 def get_setari():
     conn = get_db_connection()
     c = conn.cursor()
@@ -216,7 +216,6 @@ def genereaza_pdf(data):
     SECONDARY = (71, 85, 105)
     BG_LIGHT = (241, 245, 249)
     
-    # Preluare date setări firmă emitentă pentru antetul PDF
     setari_pdf = get_setari()
     nume_emitent = setari_pdf[0]
     cui_emitent = setari_pdf[1]
@@ -226,7 +225,6 @@ def genereaza_pdf(data):
     iban_emitent = setari_pdf[5]
     swep_emitent = setari_pdf[6]
 
-    # Afișare date firmă emitentă sus în pagină
     pdf.set_font('Helvetica', 'B', 9)
     pdf.set_text_color(*PRIMARY)
     pdf.cell(0, 5, curata_text(f"{nume_emitent} | CUI: {cui_emitent} | Reg. Com.: {reg_emitent}"), 0, 1, 'L')
@@ -234,7 +232,6 @@ def genereaza_pdf(data):
     pdf.set_text_color(*SECONDARY)
     pdf.cell(0, 4, curata_text(f"Adresă: {adresa_emitent} | Bancă: {banca_emitent} | IBAN: {iban_emitent} | SWIFT: {swep_emitent}"), 0, 1, 'L')
     
-    # Spațiu liber suplimentar pentru a evita suprapunerea cu linia
     pdf.ln(6)
 
     pdf.set_font('Helvetica', 'B', 11)
@@ -347,7 +344,7 @@ def genereaza_pdf(data):
         return str(output).encode('latin1', errors='ignore')
 
 # ------------------------------------------------------------------------------
-# 4. Funcție Trimitere Email prin SMTP (Client + Tehnician + contact@nexusindustrial.ro)
+# 4. Funcție Trimitere Email prin SMTP
 # ------------------------------------------------------------------------------
 def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume_fisier):
     setari = get_setari()
@@ -361,7 +358,6 @@ def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume
     msg['Subject'] = subiect
     msg['From'] = smtp_u if smtp_u else "contact@nexusindustrial.ro"
     
-    # Colectare destinatari multipli
     destinatari = [destinatar_client]
     if email_tehnician:
         destinatari.append(email_tehnician)
@@ -728,7 +724,7 @@ with tab_activitati:
                         if success:
                             st.success(msg)
                             setari_info = get_setari()
-                            sheet_url = setari_info[11]  # google_sheet_url
+                            sheet_url = setari_info[11]
                             if sheet_url:
                                 try:
                                     ora_curenta = datetime.now().strftime("%H:%M:%S")
@@ -808,7 +804,7 @@ with tab_optimizare:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 4: Tabelul de Piese (Prețul de achiziție a fost scos)
+# TAB 4: Tabelul de Piese
 # ------------------------------------------------------------------------------
 with tab_piese:
     st.subheader("🔧 Gestiune Piese de Schimb")
@@ -840,35 +836,45 @@ with tab_piese:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 6: Istoric & Google Sheet
+# TAB 6: Istoric & Google Sheet (Optimizat - Fără N+1 queries)
 # ------------------------------------------------------------------------------
 with tab_rapoarte:
     st.subheader("📋 Istoric Intervenții")
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT id, firma, masina, titlu, data_creare, simptom, solutie, verificator, tehnician FROM reparatii ORDER BY id DESC")
+    # Preluăm direct toate detaliile dintr-o singură interogare (optimizare viteză)
+    c.execute("""
+        SELECT id, firma, masina, subansamblu, durata, cod_eroare, stare_finala, 
+               piese_json, titlu, simptom, defect, solutie, optimizari, 
+               tehnician, verificator, data_creare 
+        FROM reparatii 
+        ORDER BY id DESC
+    """)
     reparatii_db = c.fetchall()
     
     if reparatii_db:
-        for rep in reparatii_db:
-            rid, rfirma, rmas, rtit, rdat, rsimp, rsol, rverif, rtech = rep
+        for full_rep in reparatii_db:
+            rid = full_rep[0]
+            rfirma = full_rep[1]
+            rmas = full_rep[2]
+            rtit = full_rep[8]
+            rsol = full_rep[11]
+            rdata = full_rep[15]
+            
             with st.expander(f"📄 Raport Inregistrare #{rid} - Firmă: {rfirma} | Echipament: {rmas}"):
                 st.write(f"**Titlu:** {rtit}")
                 st.write(f"**Soluție:** {rsol}")
                 
-                c.execute("SELECT id, firma, masina, subansamblu, durata, cod_eroare, stare_finala, piese_json, titlu, simptom, defect, solutie, optimizari, tehnician, verificator, data_creare FROM reparatii WHERE id=%s", (rid,))
-                full_rep = c.fetchone()
-                if full_rep:
-                    piese_data = json.loads(full_rep[7]) if full_rep[7] else []
-                    date_pdf = {
-                        "id": full_rep[0], "client": full_rep[1], "masina": full_rep[2], "subansamblu": full_rep[3],
-                        "durata": full_rep[4], "cod_eroare": full_rep[5], "stare_finala": full_rep[6], "piese_json": piese_data,
-                        "titlu": full_rep[8], "simptom": full_rep[9], "defect": full_rep[10], "solutie": full_rep[11],
-                        "optimizari": full_rep[12], "tehnician": full_rep[13], "verificator": full_rep[14], "data": full_rep[15]
-                    }
-                    pdf_bytes = genereaza_pdf(date_pdf)
-                    
-                    st.download_button(label=f"📥 Descarcă PDF Raport #{rid}", data=pdf_bytes, file_name=f"Raport_{rid}.pdf", mime="application/pdf", key=f"dl_{rid}")
+                piese_data = json.loads(full_rep[7]) if full_rep[7] else []
+                date_pdf = {
+                    "id": full_rep[0], "client": full_rep[1], "masina": full_rep[2], "subansamblu": full_rep[3],
+                    "durata": full_rep[4], "cod_eroare": full_rep[5], "stare_finala": full_rep[6], "piese_json": piese_data,
+                    "titlu": full_rep[8], "simptom": full_rep[9], "defect": full_rep[10], "solutie": full_rep[11],
+                    "optimizari": full_rep[12], "tehnician": full_rep[13], "verificator": full_rep[14], "data": full_rep[15]
+                }
+                pdf_bytes = genereaza_pdf(date_pdf)
+                
+                st.download_button(label=f"📥 Descarcă PDF Raport #{rid}", data=pdf_bytes, file_name=f"Raport_{rid}.pdf", mime="application/pdf", key=f"dl_{rid}")
     else:
         st.info("Nu există rapoarte înregistrate.")
     conn.close()
