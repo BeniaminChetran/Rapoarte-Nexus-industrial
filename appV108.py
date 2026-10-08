@@ -1,10 +1,5 @@
 #-----------------------------------------------------------------------------------
 # APLICATIE STREAMLIT OPTIMIZATĂ PENTRU SUPABASE (POSTGRESQL)
-#functional in github appV108.py
-#-----------------------------------------------------------------------------------
-
-#-----------------------------------------------------------------------------------
-# APLICATIE STREAMLIT OPTIMIZATĂ PENTRU SUPABASE (POSTGRESQL)
 # functional in github appV108.py
 #-----------------------------------------------------------------------------------
 
@@ -397,7 +392,6 @@ def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume
 st.sidebar.title("📌 Nexus Control Panel")
 st.sidebar.text("Sistem integrat activ")
 
-# Buton actualizat: "Închide aplicația"
 if st.sidebar.button("🛑 Închide aplicația", type="primary", key="inchide_server_btn"):
     st.sidebar.warning("Se închide serverul...")
     os._exit(0)
@@ -405,7 +399,6 @@ if st.sidebar.button("🛑 Închide aplicația", type="primary", key="inchide_se
 st.sidebar.markdown("---")
 st.sidebar.info("Aplicație optimizată pentru mobil și desktop.")
 
-# Titlu principal actualizat la "NexInd"
 st.title("🛠️ NexInd")
 
 tab_activitati, tab_optimizare, tab_masini, tab_piese, tab_firme, tab_rapoarte, tab_setari = st.tabs([
@@ -483,10 +476,17 @@ with tab_firme:
                         st.rerun()
                 with col_m2:
                     if st.form_submit_button("🗑️ Șterge Firma"):
-                        c.execute("DELETE FROM firme WHERE id=%s", (fid,))
-                        conn.commit()
-                        st.success("Firma a fost ștearsă din Supabase!")
-                        st.rerun()
+                        try:
+                            c.execute("DELETE FROM firme WHERE id=%s", (fid,))
+                            conn.commit()
+                            st.success("Firma a fost ștearsă din Supabase!")
+                            st.rerun()
+                        except psycopg2.errors.ForeignKeyViolation:
+                            conn.rollback()
+                            st.error("Sterge masinile asociate acestei firme si apoi sterge firma.")
+                        except Exception as e:
+                            conn.rollback()
+                            st.error(f"Eroare la ștergere: {str(e)}")
     conn.close()
 
 # ------------------------------------------------------------------------------
