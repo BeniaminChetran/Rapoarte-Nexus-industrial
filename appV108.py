@@ -616,10 +616,42 @@ with tab_activitati:
                 c.execute("SELECT id FROM reparatii ORDER BY id DESC LIMIT 1")
                 ultima_inreg = c.fetchone()
                 if ultima_inreg:
-                    st.session_state["ultimul_id_salvat"] = ultima_inreg[0]
+                    rid_nou = ultima_inreg[0]
+                    st.session_state["ultimul_id_salvat"] = rid_nou
                     
+                    # Trimite automat în Google Sheet la salvare cu status "nefacturat"
+                    setari_info = get_setari()
+                    sheet_url = setari_info[11]
+                    if sheet_url:
+                        try:
+                            ora_curenta = datetime.now().strftime("%H:%M:%S")
+                            data_curenta = datetime.now().strftime("%Y-%m-%d")
+                            piese_utilizate_str = ", ".join([f"{p.get('piesa')} ({p.get('cantitate')})" for p in piese_valide if p.get('tip') in ['Utilizata', 'Inlocuita']])
+                            piese_necesare_str = ", ".join([f"{p.get('piesa')} ({p.get('cantitate')})" for p in piese_valide if p.get('tip') in ['Necesara', 'De Comandat']])
+                            
+                            payload_sheet = {
+                                "status": "nefacturat",
+                                "id": str(rid_nou),
+                                "data": str(data_curenta),
+                                "ora": str(ora_curenta),
+                                "firma": str(sel_firma),
+                                "masina": str(sel_masina),
+                                "subansamblu": str(sel_subansamblu or "General"),
+                                "solutie": str(solutie or ""),
+                                "verificator": str(verificator_nume or ""),
+                                "tehnician": str(tehnician_nume or ""),
+                                "piese utilizate": str(piese_utilizate_str),
+                                "necesar piese": str(piese_necesare_str)
+                            }
+                            req_data = json.dumps(payload_sheet).encode('utf-8')
+                            req = urllib.request.Request(sheet_url, data=req_data, headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'})
+                            with urllib.request.urlopen(req) as response:
+                                response.read().decode('utf-8')
+                        except Exception as e:
+                            st.warning(f"Nu s-a putut trimite în Google Sheet: {str(e)}")
+
                 st.session_state["raport_salvat"] = True
-                st.success("Activitatea a fost salvată în Supabase!")
+                st.success("Activitatea a fost salvată în Supabase și trimisă în Google Sheet!")
                 st.rerun()
                 
         if st.session_state["raport_salvat"] and st.session_state["ultimul_id_salvat"]:
@@ -661,28 +693,6 @@ with tab_activitati:
                         success, msg = trimite_email_raport(email_client_destinatar, subiect, corp, pdf_bytes_email, f"Raport_{rid}.pdf")
                         if success:
                             st.success(msg)
-                            setari_info = get_setari()
-                            sheet_url = setari_info[11]
-                            if sheet_url:
-                                try:
-                                    ora_curenta = datetime.now().strftime("%H:%M:%S")
-                                    piese_utilizate_str = ", ".join([f"{p.get('piesa')} ({p.get('cantitate')})" for p in piese_data_salvate if p.get('tip') in ['Utilizata', 'Inlocuita']])
-                                    piese_necesare_str = ", ".join([f"{p.get('piesa')} ({p.get('cantitate')})" for p in piese_data_salvate if p.get('tip') in ['Necesara', 'De Comandat']])
-                                    
-                                    payload_sheet = {
-                                        "status":"nefacturat", "id": str(rid), "data": str(rdata)[:10], "ora": str(ora_curenta),
-                                        "firma": str(sel_firma), "masina": str(sel_masina),
-                                        "subansamblu": str(sel_subansamblu or "General"), "solutie": str(solutie or ""),
-                                        "verificator": str(verificator_nume or ""), "tehnician": str(tehnician_nume or ""),
-                                        "piese utilizate": str(piese_utilizate_str), "necesar piese": str(piese_necesare_str)
-                                    }
-                                    req_data = json.dumps(payload_sheet).encode('utf-8')
-                                    req = urllib.request.Request(sheet_url, data=req_data, headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'})
-                                    with urllib.request.urlopen(req) as response:
-                                        response.read().decode('utf-8')
-                                        st.success("Datele au fost trimise cu succes și în Google Sheet!")
-                                except Exception as e:
-                                    st.error(f"Eroare la Google Sheet: {str(e)}")
                         else:
                             st.error(msg)
     conn.close()
