@@ -670,7 +670,7 @@ with tab_activitati:
                                     piese_necesare_str = ", ".join([f"{p.get('piesa')} ({p.get('cantitate')})" for p in piese_data_salvate if p.get('tip') in ['Necesara', 'De Comandat']])
                                     
                                     payload_sheet = {
-                                        |"status":"nefacturat", "id": str(rid), "data": str(rdata)[:10], "ora": str(ora_curenta),
+                                        "status":"nefacturat", "id": str(rid), "data": str(rdata)[:10], "ora": str(ora_curenta),
                                         "firma": str(sel_firma), "masina": str(sel_masina),
                                         "subansamblu": str(sel_subansamblu or "General"), "solutie": str(solutie or ""),
                                         "verificator": str(verificator_nume or ""), "tehnician": str(tehnician_nume or ""),
