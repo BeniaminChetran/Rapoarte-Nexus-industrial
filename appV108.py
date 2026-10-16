@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------------
-# APLICATIE STREAMLIT OPTIMIZATĂ PENTRU SUPABASE (POSTGRESQL) - VERSIUNE RAPIDĂ
+# APLICATIE STREAMLIT OPTIMIZATĂ PENTRU SUPABASE (POSTGRESQL) - VERSIUNE PERFORMANTĂ
 #-----------------------------------------------------------------------------------
 
 import os
@@ -30,7 +30,7 @@ def get_db_connection():
         st.stop()
 
 # ------------------------------------------------------------------------------
-# 1. Configurare Pagină & Stil UI (Optimizat și pentru Mobil)
+# 1. Configurare Pagină & Stil UI
 # ------------------------------------------------------------------------------
 st.set_page_config(
     page_title="NexInd",
@@ -39,7 +39,7 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------------------------
-# 2. Funcții cu Cache pentru Performanță Maximă
+# 2. Funcții Optimizate cu Cache pentru Reducerea Interogărilor Redundante
 # ------------------------------------------------------------------------------
 @st.cache_data(ttl=300)
 def get_setari():
@@ -73,7 +73,7 @@ def get_masini():
     conn = get_db_connection()
     c = conn.cursor()
     c.execute("""
-        SELECT *
+        SELECT id, firma_id, denumire, tip_masina, serie, an_fabricatie, subansambluri, erori, defecte, remediu, piese_necesare, piese_inlocuite, tipuri_fluide, data_intretinere, tip_intretinere
         FROM masini
     """)
     data = c.fetchall()
@@ -85,7 +85,7 @@ def get_piese():
     conn = get_db_connection()
     c = conn.cursor()
     c.execute("""
-        SELECT *
+        SELECT id, denumire, cod_producator, cod_comercial, masina_montaj, subansamblu
         FROM piese
         ORDER BY denumire
     """)
@@ -738,7 +738,7 @@ with tab_optimizare:
         defecte_existente = [row[0] for row in c.fetchall() if row[0]]
         sel_opt_defect = st.selectbox("Selectează Defectul / Procedura", options=defecte_existente + ["+ Defect nou"])
         
-        def_final = st.text_input("Descriere Defect Nou") if sel_opt_defect == "+ Defect nou" else sel_opt_defect
+        def_final = st.text_area("Descriere Defect Nou") if sel_opt_defect == "+ Defect nou" else sel_opt_defect
             
         if sel_opt_defect != "+ Defect nou" and sel_opt_defect:
             st.markdown(f"##### 🔎 Editare Pași de Reparație Existenti:")
@@ -798,7 +798,7 @@ with tab_optimizare:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 4: Tabelul de Piese (Filtrare exact ca la mașini și firme)
+# TAB 4: Tabelul de Piese (Un singur control unificat pentru filtrare și adăugare)
 # ------------------------------------------------------------------------------
 with tab_piese:
     st.subheader("🔧 Gestiune Piese de Schimb")
@@ -807,11 +807,11 @@ with tab_piese:
     masini_rows = get_masini()
     masini_existente = [row[2] for row in masini_rows]
     
-    # UN SINGUR COMBOBOX PRINCIPAL PLASAT SUS, ÎN AFARA ORICĂRUI FORMULAR
-    select_masina_piese = st.selectbox(
-        "Selectează mașina pentru filtrare piese", 
+    # UN SINGUR ELEMENT DE SELECȚIE PRINCIPAL (Afișat sus, în afara form-urilor)
+    select_masina_unica = st.selectbox(
+        "Selectează Mașina (Filtrare listă & Asociere piesă nouă)", 
         options=["Toate mașinile / General"] + masini_existente, 
-        key="select_masina_principal_piese"
+        key="select_masina_unica_piese"
     )
     
     st.markdown("---")
@@ -824,19 +824,20 @@ with tab_piese:
             p_cod_prod = st.text_input("Cod Producător")
             p_cod_com = st.text_input("Cod Comercial")
         with c2:
-            p_masini_alese = st.multiselect("Mașinile pe care se montează", options=masini_existente)
             p_sub = st.text_input("Subansamblu")
+            # Informare clară legată de mașina preluată automat din controlul unic de sus
+            st.info(f"📍 Piesa se va înregistra pentru: **{select_masina_unica}**")
             
         if st.form_submit_button("💾 Salvează Piesa"):
             if p_denumire:
-                masini_text_str = ", ".join(p_masini_alese) if p_masini_alese else "General"
+                masini_text_str = select_masina_unica if select_masina_unica != "Toate mașinile / General" else "General"
                 c.execute("""
                     INSERT INTO piese (denumire, cod_producator, cod_comercial, masina_montaj, subansamblu)
                     VALUES (%s, %s, %s, %s, %s)
                 """, (p_denumire, p_cod_prod, p_cod_com, masini_text_str, p_sub))
                 conn.commit()
                 st.cache_data.clear()
-                st.success(f"Piesa **{p_denumire}** a fost salvată în Supabase!")
+                st.success(f"Piesa **{p_denumire}** a fost salvată pentru **{masini_text_str}**!")
                 st.rerun()
             else:
                 st.error("Completați denumirea piesei.")
@@ -844,8 +845,8 @@ with tab_piese:
     st.markdown("---")
     st.subheader("📋 Piese Înregistrate (Modificare & Ștergere)")
     
-    # FILTRAREA INSTANTANEE A LISTEI ÎN FUNCȚIE DE SELECȚIA DE SUS
-    if select_masina_piese != "Toate mașinile / General":
+    # FILTRAREA INSTANTANEE A LISTEI FOLOSIND ACELAȘI CONTROL UNIC DE SUS
+    if select_masina_unica != "Toate mașinile / General":
         c.execute("""
             SELECT * FROM piese 
             WHERE TRIM(masina_montaj) ILIKE %s 
@@ -856,9 +857,9 @@ with tab_piese:
                OR masina_montaj IS NULL
             ORDER BY denumire
         """, (
-            f"%{select_masina_piese}%", 
-            f"{select_masina_piese},%", 
-            f"%, {select_masina_piese}%"
+            f"%{select_masina_unica}%", 
+            f"{select_masina_unica},%", 
+            f"%, {select_masina_unica}%"
         ))
     else:
         c.execute("""
@@ -898,7 +899,7 @@ with tab_piese:
                             st.success("Piesa a fost ștearsă din baza de date!")
                             st.rerun()
     else:
-        st.info(f"Nu există piese înregistrate pentru mașina selectată ({select_masina_piese}).")
+        st.info(f"Nu există piese înregistrate pentru selecția curentă ({select_masina_unica}).")
     conn.close()
 
 # ------------------------------------------------------------------------------
