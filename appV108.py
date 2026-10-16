@@ -257,7 +257,6 @@ def genereaza_pdf(data):
     if data['optimizari']:
         adauga_sectiune("Recomandari Tehnice & Siguranta", data['optimizari'])
 
-    # Siguranță pentru paginare / semnături
     if pdf.get_y() > 235:
         pdf.add_page()
 
@@ -279,7 +278,7 @@ def genereaza_pdf(data):
     return output if isinstance(output, bytes) else output.encode('latin1', errors='ignore')
 
 # ------------------------------------------------------------------------------
-# 4. Trimitere Email prin SMTP (Securizat & Fără Duplicate)
+# 4. Trimitere Email prin SMTP
 # ------------------------------------------------------------------------------
 def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume_fisier):
     setari = get_setari()
@@ -300,7 +299,6 @@ def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume
         destinatari.append(email_tehnician.strip())
     destinatari.append("contact@nexusindustrial.ro")
     
-    # Eliminare duplicate cu list(set(...))
     destinatari_unice = list(set([d for d in destinatari if d and d.strip()]))
     msg['To'] = ", ".join(destinatari_unice)
     msg.set_content(corp_mesaj)
@@ -341,7 +339,7 @@ tab_activitati, tab_optimizare, tab_masini, tab_piese, tab_firme, tab_rapoarte, 
 ])
 
 # ------------------------------------------------------------------------------
-# TAB 5: Nomenclator Firme (Fără interogări N+1)
+# TAB 5: Nomenclator Firme
 # ------------------------------------------------------------------------------
 with tab_firme:
     st.subheader("📇 Gestiune Firme și Persoane de Contact")
@@ -510,7 +508,7 @@ with tab_masini:
                         st.rerun()
 
 # ------------------------------------------------------------------------------
-# TAB 1: Activități Zilnice (cu INSERT ... RETURNING id)
+# TAB 1: Activități Zilnice
 # ------------------------------------------------------------------------------
 with tab_activitati:
     st.subheader("📝 Activități Zilnice & Raport Intervenție Tehnică")
@@ -601,7 +599,6 @@ with tab_activitati:
             if st.button("💾 Salvează Activitatea în DB", type="primary"):
                 piese_valide = [p for p in st.session_state["randuri_piese"] if p["piesa"] != "Selectează..."]
                 
-                # INSERT ... RETURNING id siguranță maximă concurență
                 with db_cursor() as c:
                     c.execute("""
                         INSERT INTO reparatii (firma, masina, subansamblu, defect, cod_eroare, piese_json, titlu, simptom, solutie, stare_finala, durata, optimizari, tehnician, verificator) 
@@ -637,12 +634,12 @@ with tab_activitati:
                 
         if st.session_state["raport_salvat"] and st.session_state["ultimul_id_salvat"]:
             rid = st.session_state["ultimul_id_salvat"]
-            conn_ rep = get_db_connection()
-            cur_rep = conn_ rep.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            conn_rep = get_db_connection()
+            cur_rep = conn_rep.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur_rep.execute("SELECT id, firma, masina, subansamblu, durata, cod_eroare, stare_finala, piese_json, titlu, simptom, defect, solutie, optimizari, tehnician, verificator, data_creare FROM reparatii WHERE id=%s", (rid,))
             full_rep_salvat = cur_rep.fetchone()
             cur_rep.close()
-            conn_ rep.close()
+            conn_rep.close()
 
             if full_rep_salvat:
                 date_pdf = {
@@ -664,7 +661,7 @@ with tab_activitati:
                         else: st.error(msg)
 
 # ------------------------------------------------------------------------------
-# TAB 2: Documentatii / Proceduri de reparații (Combobox unificat)
+# TAB 2: Documentatii / Proceduri de reparații
 # ------------------------------------------------------------------------------
 with tab_optimizare:
     st.subheader("📊 Documentatii / Proceduri de reparații")
@@ -754,7 +751,7 @@ with tab_optimizare:
                     st.error("Introduceți sau selectați un defect valid înainte de salvare.")
 
 # ------------------------------------------------------------------------------
-# TAB 4: Tabelul de Piese (Filtrare optimizată cu cache)
+# TAB 4: Tabelul de Piese
 # ------------------------------------------------------------------------------
 with tab_piese:
     st.subheader("🔧 Gestiune Piese de Schimb")
