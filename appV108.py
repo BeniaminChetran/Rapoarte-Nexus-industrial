@@ -738,7 +738,7 @@ with tab_optimizare:
         defecte_existente = [row[0] for row in c.fetchall() if row[0]]
         sel_opt_defect = st.selectbox("Selectează Defectul / Procedura", options=defecte_existente + ["+ Defect nou"])
         
-        def_final = st.text_area("Descriere Defect Nou") if sel_opt_defect == "+ Defect nou" else sel_opt_defect
+        def_final = st.text_input("Descriere Defect Nou") if sel_opt_defect == "+ Defect nou" else sel_opt_defect
             
         if sel_opt_defect != "+ Defect nou" and sel_opt_defect:
             st.markdown(f"##### 🔎 Editare Pași de Reparație Existenti:")
@@ -845,21 +845,21 @@ with tab_piese:
     st.markdown("---")
     st.subheader("📋 Piese Înregistrate (Modificare & Ștergere)")
     
-    # FILTRAREA INSTANTANEE A LISTEI FOLOSIND ACELAȘI CONTROL UNIC DE SUS
+    # FILTRAREA INSTANTANEE ROBUSTă A LISTEI FOLOSIND ACELAȘI CONTROL UNIC DE SUS
     if select_masina_unica != "Toate mașinile / General":
         c.execute("""
             SELECT * FROM piese 
-            WHERE TRIM(masina_montaj) ILIKE %s 
-               OR TRIM(masina_montaj) ILIKE %s 
-               OR TRIM(masina_montaj) ILIKE %s 
-               OR masina_montaj ILIKE 'General'
+            WHERE LOWER(TRIM(masina_montaj)) LIKE LOWER(%s)
+               OR LOWER(masina_montaj) LIKE LOWER(%s)
+               OR LOWER(masina_montaj) LIKE LOWER(%s)
+               OR LOWER(TRIM(masina_montaj)) = 'general'
                OR masina_montaj = ''
                OR masina_montaj IS NULL
             ORDER BY denumire
         """, (
-            f"%{select_masina_unica}%", 
-            f"{select_masina_unica},%", 
-            f"%, {select_masina_unica}%"
+            f"%{select_masina_unica.strip()}%", 
+            f"{select_masina_unica.strip()},%", 
+            f"%, {select_masina_unica.strip()}%"
         ))
     else:
         c.execute("""
