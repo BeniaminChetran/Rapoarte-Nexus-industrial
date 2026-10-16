@@ -39,7 +39,7 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------------------------
-# 2. Funcții Optimizate cu Cache pentru Performanță Maximă (Fără lag la schimbări)
+# 2. Funcții Optimizate cu Cache pentru Performanță Maximă
 # ------------------------------------------------------------------------------
 @st.cache_data(ttl=300)
 def get_setari():
@@ -623,7 +623,7 @@ with tab_activitati:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 2: Documentatii / Proceduri de reparații
+# TAB 2: Documentatii / Proceduri de reparații (Cu control unic unificat)
 # ------------------------------------------------------------------------------
 with tab_optimizare:
     st.subheader("📊 Documentatii / Proceduri de reparații")
@@ -635,17 +635,29 @@ with tab_optimizare:
         st.warning("⚠️ Adăugați mașini în Tabul 3.")
     else:
         sel_opt_masina = st.selectbox("Selectează Mașina", options=masini_existente, key="opt_m_sel")
+        
+        # Preluăm defectele existente pentru mașina selectată
         c.execute("SELECT DISTINCT defect FROM optimizari_interventie WHERE masina = %s", (sel_opt_masina,))
         defecte_existente = [row[0] for row in c.fetchall() if row[0]]
-        sel_opt_defect = st.selectbox("Selectează Defectul / Procedura", options=defecte_existente + ["+ Defect nou"])
         
-        def_final = st.text_input("Descriere Defect Nou") if sel_opt_defect == "+ Defect nou" else sel_opt_defect
+        # UN SINGUR CONTROL UNIFICAT PENTRU SELECTARE ȘI INTRODUCERE DEFECT NOU (Stil combobox liber/select)
+        opțiuni_defecte = ["+ Defect nou (scrie mai jos)"] + defecte_existente
+        sel_opt_defect_complet = st.selectbox("Selectează sau creează Defectul / Procedura", options=opțiuni_defecte, key="select_defect_unificat")
+        
+        if sel_opt_defect_complet == "+ Defect nou (scrie mai jos)":
+            def_final = st.text_input("Introduceți descrierea pentru defectul / procedura nouă *", key="input_defect_nou_text")
+        else:
+            def_final = sel_opt_defect_complet
             
-        if sel_opt_defect != "+ Defect nou" and sel_opt_defect:
-            st.markdown(f"##### 🔎 Editare Pași:")
-            c.execute("SELECT id, pas_numar, descriere_pas FROM optimizari_interventie WHERE masina = %s AND defect = %s ORDER BY pas_numar", (sel_opt_masina, sel_opt_defect))
+        st.markdown("---")
+        
+        # Dacă s-a selectat un defect existent, afișăm pașii pentru editare/ștergere
+        if sel_opt_defect_complet != "+ Defect nou (scrie mai jos)" and sel_opt_defect_complet:
+            st.markdown(f"##### 🔎 Editare Pași de Reparație existenți pentru: **{sel_opt_defect_complet}**")
+            c.execute("SELECT id, pas_numar, descriere_pas FROM optimizari_interventie WHERE masina = %s AND defect = %s ORDER BY pas_numar", (sel_opt_masina, sel_opt_defect_complet))
             pasii_db = c.fetchall()
-            with st.form(f"form_edita_pasi_{sel_opt_masina}_{sel_opt_defect}"):
+            
+            with st.form(f"form_edita_pasi_{sel_opt_masina}_{sel_opt_defect_complet}"):
                 pasi_editati_dict = {pe[0]: st.text_input(f"Pasul {pe[1]}", value=pe[2], key=f"edit_pas_db_{pe[0]}") for pe in pasii_db}
                 col_ep1, col_ep2 = st.columns(2)
                 with col_ep1:
@@ -653,32 +665,33 @@ with tab_optimizare:
                         for pid_pas, val_noua in pasi_editati_dict.items():
                             c.execute("UPDATE optimizari_interventie SET descriere_pas = %s WHERE id = %s", (val_noua, pid_pas))
                         conn.commit()
-                        st.success("Pașii au fost actualizați!")
+                        st.success("Pașii au fost actualizați cu succes!")
                         st.rerun()
                 with col_ep2:
-                    if st.form_submit_button("🗑️ Șterge Procedura"):
-                        c.execute("DELETE FROM optimizari_interventie WHERE masina = %s AND defect = %s", (sel_opt_masina, sel_opt_defect))
+                    if st.form_submit_button("🗑️ Șterge Toată Procedura"):
+                        c.execute("DELETE FROM optimizari_interventie WHERE masina = %s AND defect = %s", (sel_opt_masina, sel_opt_defect_complet))
                         conn.commit()
                         st.success("Procedura a fost ștearsă!")
                         st.rerun()
             st.markdown("---")
             
-        st.markdown("##### Adăugare Pași Noi")
+        st.markdown(f"##### ➕ Adaugă Pași Noi pentru: **{def_final if def_final else 'Nefinit'}**")
         if "pasi_lucrare_t" not in st.session_state:
             st.session_state["pasi_lucrare_t"] = []
             
         with st.form("form_add_pas", clear_on_submit=True):
             desc_p_nou = st.text_area("Descriere pas remediu nou")
-            if st.form_submit_button("➕ Adaugă Pas în Listă"):
+            if st.form_submit_button("➕ Adaugă Pas în Memorie"):
                 if desc_p_nou:
                     st.session_state["pasi_lucrare_t"].append(desc_p_nou)
-                    st.success("Pas adăugat în memorie!")
+                    st.success("Pas adăugat în listă!")
                     st.rerun()
                     
         if st.session_state["pasi_lucrare_t"]:
+            st.write("Pași adăugați pregătiți pentru salvare:")
             pasi_modificati = [st.text_input(f"Pas nou {idx+1}", value=pval, key=f"pas_ed_{idx}") for idx, pval in enumerate(st.session_state["pasi_lucrare_t"])]
-            if st.button("💾 Salvează Toți Pașii Noi", type="primary"):
-                if def_final:
+            if st.button("💾 Salvează Toți Pașii Noi în Baza de Date", type="primary"):
+                if def_final and def_final.strip() != "":
                     c.execute("SELECT MAX(pas_numar) FROM optimizari_interventie WHERE masina = %s AND defect = %s", (sel_opt_masina, def_final))
                     max_p = c.fetchone()
                     start_nr = (max_p[0] if max_p and max_p[0] else 0) + 1
@@ -686,12 +699,14 @@ with tab_optimizare:
                         c.execute("INSERT INTO optimizari_interventie (masina, defect, pas_numar, descriere_pas) VALUES (%s, %s, %s, %s)", (sel_opt_masina, def_final, start_nr + idx, pval))
                     conn.commit()
                     st.session_state["pasi_lucrare_t"] = []
-                    st.success("Pașii au fost salvați!")
+                    st.success("Pașii noi au fost salvați în Supabase!")
                     st.rerun()
+                else:
+                    st.error("Introduceți sau selectați un defect valid înainte de salvare.")
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 4: Tabelul de Piese (Un control unic unificat și instantaneu)
+# TAB 4: Tabelul de Piese (Control unic unificat)
 # ------------------------------------------------------------------------------
 with tab_piese:
     st.subheader("🔧 Gestiune Piese de Schimb")
@@ -733,7 +748,6 @@ with tab_piese:
     st.markdown("---")
     st.subheader("📋 Piese Înregistrate (Modificare & Ștergere)")
     
-    # Folosim funcția cache dedicată pentru filtrare rapidă, fără lag
     piese_db_all = get_piese_filtrate(select_masina_unica)
     
     if piese_db_all:
