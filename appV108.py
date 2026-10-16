@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------------
-# APLICATIE STREAMLIT CMMS ULTRA-PERFORMANTA (SUPABASE / POSTGRESQL) - v9.9 ENTERPRISE
+# APLICATIE STREAMLIT CMMS ULTRA-PERFORMANTA (SUPABASE / POSTGRESQL) - v9.9.1 PREDICTII
 #-----------------------------------------------------------------------------------
 
 import os
@@ -22,13 +22,12 @@ import pandas as pd
 load_dotenv()
 
 # ------------------------------------------------------------------------------
-# 1. CONFIGURARE CONNECTION POOL & CACHE RESOURCE (Prioritatea 1 & 2)
+# 1. CONFIGURARE CONNECTION POOL & CACHE RESOURCE
 # ------------------------------------------------------------------------------
 @st.cache_resource
 def init_connection_pool():
     try:
         db_url = st.secrets["DATABASE_URL"]
-        # Pool cu minim 1 conexiune și maxim 20 pentru concurență ridicată
         pool = ThreadedConnectionPool(1, 20, db_url)
         return pool
     except Exception as e:
@@ -277,7 +276,7 @@ def genereaza_pdf(data):
     return output if isinstance(output, bytes) else output.encode('latin1', errors='ignore')
 
 # ------------------------------------------------------------------------------
-# 5. Background Services Non-Blocking (Prioritatea 8)
+# 5. Background Services Non-Blocking
 # ------------------------------------------------------------------------------
 def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume_fisier):
     setari = get_setari()
@@ -325,7 +324,6 @@ def update_google_sheet(payload_sheet):
             pass
 
 def background_sync_task(payload_sheet, email_client, subiect, corp_mesaj, pdf_bytes, nume_fisier):
-    # Rulează în fundal pentru a nu bloca interfața utilizatorului (UX instantaneu)
     update_google_sheet(payload_sheet)
     if email_client:
         trimite_email_raport(email_client, subiect, corp_mesaj, pdf_bytes, nume_fisier)
@@ -334,20 +332,21 @@ def background_sync_task(payload_sheet, email_client, subiect, corp_mesaj, pdf_b
 # 6. Interfața Principală Streamlit & Sidebar
 # ------------------------------------------------------------------------------
 st.sidebar.title("📌 Nexus Control Panel")
-st.sidebar.text("CMMS Enterprise v9.9")
+st.sidebar.text("CMMS Enterprise v9.9.1")
 st.sidebar.markdown("---")
 st.sidebar.info("Conexiune optimizată prin ThreadedConnectionPool.")
 
 st.title("🛠️ NexInd CMMS")
 
-tab_activitati, tab_optimizare, tab_masini, tab_piese, tab_firme, tab_rapoarte, tab_setari = st.tabs([
+tab_activitati, tab_optimizare, tab_masini, tab_piese, tab_firme, tab_rapoarte, tab_predictii, tab_setari = st.tabs([
     "📝 1. Activități", 
     "📊 2. Documentatii / Proceduri", 
     "🏭 3. Mașini", 
     "🔧 4. Piese", 
     "📇 5. Firme",
     "📋 6. Istoric",
-    "⚙️ 7. Setări"
+    "🔮 7. Predicții",
+    "⚙️ 8. Setări"
 ])
 
 # ------------------------------------------------------------------------------
@@ -516,7 +515,7 @@ with tab_masini:
                         st.rerun()
 
 # ------------------------------------------------------------------------------
-# TAB 1: Activități Zilnice (cu Lazy Loading & Threading Background Sync)
+# TAB 1: Activități Zilnice
 # ------------------------------------------------------------------------------
 with tab_activitati:
     st.subheader("📝 Activități Zilnice & Raport Intervenție Tehnică")
@@ -613,7 +612,6 @@ with tab_activitati:
                 if rid_nou:
                     st.session_state["ultimul_id_salvat"] = rid_nou
                     
-                    # Generare PDF în avans pentru thread
                     date_pdf_pre = {
                         "id": rid_nou, "client": sel_firma, "masina": sel_masina, "subansamblu": sel_subansamblu,
                         "durata": durata_min, "cod_eroare": cod_eroare, "stare_finala": stare_fin,
@@ -632,7 +630,6 @@ with tab_activitati:
                         "necesar piese": ", ".join([f"{p.get('Piesa')} ({p.get('Cantitate')})" for p in piese_valide if p.get('Tip') in ['Necesara', 'De Comandat']])
                     }
 
-                    # Optimizare Prioritatea 8: Rulare în Background Thread pentru viteză maximă UX
                     threading.Thread(
                         target=background_sync_task,
                         args=(payload_sheet, email_client_destinatar, f"Raport #{rid_nou} - {sel_firma}", f"Vă atașăm raportul #{rid_nou}.", pdf_bytes_gen, f"Raport_{rid_nou}.pdf"),
@@ -986,7 +983,115 @@ with tab_rapoarte:
         st.info("Nu există rapoarte înregistrate care să corespundă criteriilor de căutare.")
 
 # ------------------------------------------------------------------------------
-# TAB 7: Setări
+# TAB 7: Predicții & Mentenanță Predictivă (Noul Tab Solicitat)
+# ------------------------------------------------------------------------------
+with tab_predictii:
+    st.subheader("🔮 Tab Predicții & Analiză Mentenanță Preventivă")
+    st.markdown("Selectează firma și mașina dorită pentru a analiza istoricul de defecte recurente și consumul de piese asociat.")
+
+    firme_list_pred = get_firme()
+    nume_firme_pred = [f['nume_firma'] for f in firme_list_pred]
+
+    if not nume_firme_pred:
+        st.warning("⚠️ Nu există firme înregistrate în baza de date.")
+    else:
+        p1, p2 = st.columns(2)
+        with p1:
+            sel_firma_pred = st.selectbox("Selectează Firma", options=nume_firme_pred, key="pred_firma")
+        
+        firma_obj_pred = next((f for f in firme_list_pred if f['nume_firma'] == sel_firma_pred), None)
+        masini_firma_pred = get_masini_firma(firma_obj_pred['id']) if firma_obj_pred else []
+        nume_masini_pred = [m['denumire'] for m in masini_firma_pred]
+
+        with p2:
+            sel_masina_pred = st.selectbox("Selectează Mașina", options=nume_masini_pred if nume_masini_pred else ["Nicio mașină disponibilă"], key="pred_masina")
+
+        st.markdown("---")
+
+        if sel_masina_pred and sel_masina_pred != "Nicio mașină disponibilă":
+            # Preluare date statistice despre defecte pentru mașina aleasă
+            with db_cursor() as cur_pred:
+                cur_pred.execute("""
+                    SELECT defect, COUNT(*) as frecventa, MAX(data_creare) as ultima_aparitie, 
+                           ARRAY_AGG(DISTINCT subansamblu) as subansambluri_afectate
+                    FROM reparatii
+                    WHERE firma = %s AND masina = %s AND defect IS NOT NULL AND defect != ''
+                    GROUP BY defect
+                    ORDER BY frecventa DESC
+                """, (sel_firma_pred, sel_masina_pred))
+                defecte_recurente = cur_pred.fetchall()
+
+            st.markdown(f"### 📈 Analiză Defecte Recurente pentru: **{sel_masina_pred}** ({sel_firma_pred})")
+
+            if defecte_recurente:
+                for index, d in enumerate(defecte_recurente):
+                    frecventa = d['frecventa']
+                    ultima = str(d['ultima_aparitie'])[:10]
+                    subansambluri = ", ".join([str(s) for s in d['subansambluri_afectate'] if s])
+
+                    if frecventa >= 3:
+                        st.error(
+                            f"🚨 **Alertă Critică (Defect Recurent Frecvent):** \"{d['defect']}\"\n\n"
+                            f"- **Număr apariții:** {frecventa} intervenții\n"
+                            f"- **Ultima semnalare:** {ultima}\n"
+                            f"- **Subansamblu vizat:** {subansambluri or 'General'}\n\n"
+                            f"💡 *Recomandare de mentenanță predictivă:* Acest defect s-a repetat de {frecventa} ori. Se recomandă revizia capitală a subansamblului sau înlocuirea completă a piesei uzate pentru a preveni o oprire neplanificată!"
+                        )
+                    elif frecventa == 2:
+                        st.warning(
+                            f"⚠️ **Atenționare (Defect Repetat):** \"{d['defect']}\"\n\n"
+                            f"- **Număr apariții:** {frecventa} intervenții\n"
+                            f"- **Ultima semnalare:** {ultima}\n"
+                            f"- **Subansamblu vizat:** {subansambluri or 'General'}\n\n"
+                            f"💡 *Recomandare:* Monitorizați îndeaproape acest component la următoarea inspecție periodică."
+                        )
+                    else:
+                        st.info(
+                            f"ℹ️ **Defect izolat:** \"{d['defect']}\" (Apărut o singură dată la data de {ultima})."
+                        )
+            else:
+                st.success("✅ Nu există defecte recurente înregistrate pentru această mașină. Echipamentul are un istoric stabil.")
+
+            # Analiză piese utilizate sau necesare pentru mașina aleasă
+            st.markdown("---")
+            st.markdown(f"### 🔩 Istoric Consum Piese / Necesare pentru: **{sel_masina_pred}**")
+            
+            with db_cursor() as cur_piese:
+                cur_piese.execute("""
+                    SELECT piese_json, data_creare, id FROM reparatii
+                    WHERE firma = %s AND masina = %s AND piese_json IS NOT NULL
+                """, (sel_firma_pred, sel_masina_pred))
+                reparatii_piese = cur_piese.fetchall()
+
+            total_piese_consum = {}
+            for rep in reparatii_piese:
+                try:
+                    p_list = json.loads(rep['piese_json']) if isinstance(rep['piese_json'], str) else rep['piese_json']
+                    if isinstance(p_list, list):
+                        for p in p_list:
+                            nume_p = p.get('piesa') or p.get('Piesa')
+                            cant = int(p.get('cantitate') or p.get('Cantitate') or 1)
+                            tip_p = p.get('tip') or p.get('Tip') or 'Utilizata'
+                            if nume_p and nume_p != "Selectează...":
+                                if nume_p not in total_piese_consum:
+                                    total_piese_consum[nume_p] = {"cantitate": 0, "tip": tip_p}
+                                total_piese_consum[nume_p]["cantitate"] += cant
+                except Exception:
+                    pass
+
+            if total_piese_consum:
+                df_predictii_piese = pd.DataFrame([
+                    {"Denumire Piesă": k, "Cantitate Totală Consumată/Solicitată": v["cantitate"], "Ultimul Status": v["tip"]}
+                    for k, v in total_piese_consum.items()
+                ])
+                st.dataframe(df_predictii_piese, use_container_width=True)
+            else:
+                st.info("Nu există piese înregistrate în istoricul intervențiilor pentru acest echipament.")
+        else:
+            st.info("Vă rugăm să selectați o mașină validă pentru a vizualiza predicțiile.")
+
+# ------------------------------------------------------------------------------
+# TAB 8: Setări
 # ------------------------------------------------------------------------------
 with tab_setari:
     st.subheader("⚙️ Setări Aplicație & Conectare")
