@@ -1321,4 +1321,4 @@ with tab_setari:
             st.success("Setările au fost salvate!")
             st.rerun()
 
-```
+
