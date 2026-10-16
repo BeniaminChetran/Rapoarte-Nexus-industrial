@@ -798,7 +798,7 @@ with tab_optimizare:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 4: Tabelul de Piese (Cu filtru după mașina selectată)
+# TAB 4: Tabelul de Piese (Filtrare directă bazată pe selecția mașinii de sus)
 # ------------------------------------------------------------------------------
 with tab_piese:
     st.subheader("🔧 Gestiune Piese de Schimb")
@@ -807,8 +807,16 @@ with tab_piese:
     masini_rows = get_masini()
     masini_existente = [row[2] for row in masini_rows]
     
+    # Un singur combobox principal de sus care controlează filtrarea pieselor
+    filtru_piese_masina = st.selectbox(
+        "Filtrează piesele montate pe mașina", 
+        options=["Toate mașinile / General"] + masini_existente, 
+        key="select_masina_principal_piese"
+    )
+    
+    st.markdown("---")
+    st.subheader("➕ Adaugă Piesă Nouă")
     with st.form("form_piese", clear_on_submit=True):
-        st.markdown("##### Adaugă Piesă Nouă")
         c1, c2 = st.columns(2)
         with c1:
             p_denumire = st.text_input("Denumire Piesă *")
@@ -835,11 +843,8 @@ with tab_piese:
     st.markdown("---")
     st.subheader("📋 Piese Înregistrate (Modificare & Ștergere)")
     
-    # Câmp de selecție a mașinii pentru filtrarea tabelului de piese
-    filtru_piese_masina = st.selectbox("Filtrează piesele după mașină", options=["Toate mașinile / General"] + masini_existente, key="filtru_piese_pe_masina")
-    
+    # Afișarea listei filtrate în funcție de selecția principală de sus
     if filtru_piese_masina != "Toate mașinile / General":
-        # Căutăm piesele care conțin mașina selectată în șirul de mașini de montaj
         c.execute("""
             SELECT * FROM piese 
             WHERE masina_montaj ILIKE %s OR masina_montaj = 'General'
