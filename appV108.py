@@ -54,7 +54,7 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------------------------
-# 2. Funcții Optimizate cu Cache Individual
+# 2. Funcții Optimizate cu Cache Individual (Invalidare Țintită)
 # ------------------------------------------------------------------------------
 @st.cache_data(ttl=300)
 def get_setari():
@@ -278,7 +278,7 @@ def genereaza_pdf(data):
     return output if isinstance(output, bytes) else output.encode('latin1', errors='ignore')
 
 # ------------------------------------------------------------------------------
-# 4. Trimitere Email prin SMTP
+# 4. Trimitere Email prin SMTP (Securizat & Fără Duplicate)
 # ------------------------------------------------------------------------------
 def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume_fisier):
     setari = get_setari()
@@ -322,7 +322,6 @@ def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume
 # ------------------------------------------------------------------------------
 st.sidebar.title("📌 Nexus Control Panel")
 st.sidebar.text("Sistem integrat activ")
-
 st.sidebar.markdown("---")
 st.sidebar.info("Aplicație optimizată pentru mobil și desktop.")
 
@@ -826,12 +825,11 @@ with tab_piese:
         st.info(f"Nu există piese înregistrate pentru selecția curentă ({select_masina_unica}).")
 
 # ------------------------------------------------------------------------------
-# TAB 6: Istoric, Căutare & Posibilitate Editare Raport Vechi
+# TAB 6: Istoric, Căutare Avansată & Editare (Inclusiv Piese)
 # ------------------------------------------------------------------------------
 with tab_rapoarte:
     st.subheader("📋 Istoric Intervenții & Căutare Avansată")
     
-    # --- SECȚIUNE DE CĂUTARE / FILTRARE ---
     with st.expander("🔍 Căutare și Filtrare Rapoarte", expanded=True):
         firme_list_istoric = get_firme()
         nume_firme_opt = ["Toate firmele"] + [f['nume_firma'] for f in firme_list_istoric]
@@ -848,7 +846,6 @@ with tab_rapoarte:
             foloseste_data = st.checkbox("Filtrează după o dată specifică", value=False, key="filtru_ist_check_data")
             filtru_data = st.date_input("Data intervenție", value=date.today(), key="filtru_ist_data") if foloseste_data else None
 
-    # Construire dinamică a interogării SQL pe baza filtrelor alese
     query_str = "SELECT * FROM reparatii WHERE 1=1"
     query_params = []
 
@@ -877,6 +874,9 @@ with tab_rapoarte:
     st.markdown("---")
 
     if reparatii_db:
+        piese_catalog_rows = get_piese()
+        piese_catalog = [p['denumire'] for p in piese_catalog_rows]
+
         for full_rep in reparatii_db:
             rid = full_rep['id']
             rfirma = full_rep['firma']
@@ -911,20 +911,48 @@ with tab_rapoarte:
                         em_tech = st.text_input("Tehnician", value=rtech or "", key=f"em_tec_{rid}")
                         em_verif = st.text_input("Verificator / Client", value=rverif or "", key=f"em_ver_{rid}")
                         
+                    st.markdown("##### 🔧 Gestiune Piese (Utilizate / Înlocuite / Necesare)")
+                    
+                    # Cheie unică în session_state pentru listele de piese din istoric
+                    key_state_piese = f"hist_piese_{rid}"
+                    if key_state_piese not in st.session_state:
+                        piese_existente_db = json.loads(rpiese_json) if rpiese_json else []
+                        st.session_state[key_state_piese] = piese_existente_db if piese_existente_db else [{"piesa": "", "cantitate": 1, "tip": "Utilizata"}]
+
+                    updated_piese_list = []
+                    for p_idx, rp_item in enumerate(st.session_state[key_state_piese]):
+                        cols_p = st.columns([3, 1, 2])
+                        with cols_p[0]:
+                            p_sel_val = rp_item.get("piesa", "")
+                            p_idx_opt = piese_catalog.index(p_sel_val) + 1 if p_sel_val in piese_catalog else 0
+                            sel_p_nume = st.selectbox(f"Piesă #{p_idx+1}", options=["Selectează..."] + piese_catalog, index=p_idx_opt, key=f"hist_p_sel_{rid}_{p_idx}")
+                        with cols_p[1]:
+                            cant_val = int(rp_item.get("cantitate", 1))
+                            sel_p_cant = st.number_input("Cant.", min_value=1, value=cant_val, key=f"hist_p_cant_{rid}_{p_idx}")
+                        with cols_p[2]:
+                            tip_val = rp_item.get("tip", "Utilizata")
+                            tip_opts = ["Utilizata", "Inlocuita", "Necesara", "De Comandat"]
+                            tip_idx_opt = tip_opts.index(tip_val) if tip_val in tip_opts else 0
+                            sel_p_tip = st.selectbox("Tip", options=tip_opts, index=tip_idx_opt, key=f"hist_p_tip_{rid}_{p_idx}")
+                        
+                        if sel_p_nume != "Selectează...":
+                            updated_piese_list.append({"piesa": sel_p_nume, "cantitate": sel_p_cant, "tip": sel_p_tip})
+
                     em_opt = st.text_area("Recomandări Tehnice", value=ropt or "", key=f"em_opt_{rid}")
                     
                     if st.form_submit_button("💾 Salvează Modificările Raportului"):
                         with db_cursor() as c:
                             c.execute("""
                                 UPDATE reparatii 
-                                SET titlu = %s, simptom = %s, defect = %s, solutie = %s, durata = %s, stare_finala = %s, tehnician = %s, verificator = %s, optimizari = %s
+                                SET titlu = %s, simptom = %s, defect = %s, solutie = %s, durata = %s, stare_finala = %s, tehnician = %s, verificator = %s, optimizari = %s, piese_json = %s
                                 WHERE id = %s
-                            """, (em_titlu, em_simptom, em_defect, em_solutie, em_durata, em_stare, em_tech, em_verif, em_opt, rid))
+                            """, (em_titlu, em_simptom, em_defect, em_solutie, em_durata, em_stare, em_tech, em_verif, em_opt, json.dumps(updated_piese_list, ensure_ascii=False), rid))
                         st.success(f"Raportul #{rid} a fost actualizat cu succes în baza de date!")
                         st.rerun()
 
                 st.markdown("---")
                 
+                # Preluăm datele actualizate pentru PDF
                 piese_data = json.loads(rpiese_json) if rpiese_json else []
                 date_pdf = {
                     "id": rid, "client": rfirma, "masina": rmas, "subansamblu": rsub, "durata": rdurata,
