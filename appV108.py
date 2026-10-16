@@ -1,6 +1,5 @@
-
 #-----------------------------------------------------------------------------------
-# APLICATIE STREAMLIT CMMS ENTERPRISE DASHBOARD & PREDICTIVE v10.2 (SUPABASE)
+# APLICATIE STREAMLIT CMMS ENTERPRISE DASHBOARD & PREDICTIVE v10.3 (SUPABASE)
 #-----------------------------------------------------------------------------------
 
 import os
@@ -132,7 +131,6 @@ def get_piese_filtrate(select_masina_unica):
             cur.execute("SELECT id, denumire, cod_producator, cod_comercial, masina_montaj, subansamblu FROM piese ORDER BY denumire")
         return cur.fetchall()
 
-# Optimizarea 2 & 7: Cache dedicat pentru Dashboard KPI (1 singur query consolidat în loc de 5)
 @st.cache_data(ttl=60)
 def get_dashboard_kpi_data():
     with db_cursor() as c:
@@ -193,14 +191,14 @@ def get_dashboard_charts_data():
         c.execute("""
             SELECT denumire, data_intretinere
             FROM masini
-            WHERE data_intretinere IS NOT NULL AND data_intretinere <= CURRENT_DATE + INTERVAL '30 days'
+            WHERE data_intretinere IS NOT NULL 
+              AND CAST(data_intretinere AS DATE) <= CURRENT_DATE + INTERVAL '30 day'
             ORDER BY data_intretinere
         """)
         mas_scad = c.fetchall()
 
     return top_def, top_cli, top_ut, def_rec, mas_scad
 
-# Optimizarea 4 & 7: Cache dedicat pentru consumul de piese în Predicții
 @st.cache_data(ttl=300)
 def get_predictive_piese_data(firma, masina):
     with db_cursor() as cur_piese:
@@ -411,7 +409,7 @@ def background_sync_task(payload_sheet, email_client, subiect, corp_mesaj, pdf_b
 # 6. Interfața Principală Streamlit & Sidebar
 # ------------------------------------------------------------------------------
 st.sidebar.title("📌 Nexus Control Panel")
-st.sidebar.text("CMMS Enterprise Dashboard v10.2")
+st.sidebar.text("CMMS Enterprise Dashboard v10.3")
 st.sidebar.markdown("---")
 st.sidebar.info("Conexiune optimizată prin ThreadedConnectionPool & Cache.")
 
@@ -430,7 +428,7 @@ tab_dashboard, tab_activitati, tab_optimizare, tab_masini, tab_piese, tab_firme,
 ])
 
 # ------------------------------------------------------------------------------
-# TAB 0: Dashboard KPI (Optimizat cu 1 singur query consolidat și Cache)
+# TAB 0: Dashboard KPI
 # ------------------------------------------------------------------------------
 with tab_dashboard:
     st.title("📈 Dashboard CMMS")
@@ -470,7 +468,6 @@ with tab_dashboard:
         st.subheader("🏢 Top Clienți")
         if top_clienti:
             df_clienti = pd.DataFrame(top_clienti)
-            # Optimizarea 5: Înlocuit Pie Chart cu Bar Chart Orizontal pentru profesionalism CMMS
             fig_clienti = px.bar(
                 df_clienti,
                 x="interventii",
@@ -1320,5 +1317,3 @@ with tab_setari:
             get_setari.clear()
             st.success("Setările au fost salvate!")
             st.rerun()
-
-
