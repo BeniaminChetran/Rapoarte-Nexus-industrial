@@ -427,7 +427,7 @@ with tab_firme:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 3: Lista Mașini & Subansambluri (Cu opțiunea "Nicio firmă" și filtrare corectă pe firma_id)
+# TAB 3: Lista Mașini & Subansambluri (Un singur câmp sus care controlează și afișarea)
 # ------------------------------------------------------------------------------
 with tab_masini:
     st.subheader("🏭 Gestiune Mașini și Echipamente")
@@ -436,7 +436,7 @@ with tab_masini:
     firme_list = get_firme()
     firme_dict = {f[1]: f[0] for f in firme_list}
     
-    # Adăugare opțiune "Nicio firmă" în listă pentru salvare/adăugare mașină nouă
+    # Un singur combobox care include opțiunea "Nicio firmă"
     lista_firme_select_form = ["Nicio firmă"] + list(firme_dict.keys())
     
     with st.form("form_masini", clear_on_submit=True):
@@ -480,17 +480,15 @@ with tab_masini:
     st.markdown("---")
     st.subheader("📋 Mașini Înregistrate")
     
-    # Combobox separat de filtrare pentru afișare mașini (include "Nicio firmă" pentru a le vedea pe toate)
-    filtru_afisare_firma = st.selectbox("Filtrează mașinile după firmă", options=lista_firme_select_form, key="filtru_afis_firma_masini")
-    
-    if filtru_afisare_firma != "Nicio firmă":
-        firma_id_selectat = firme_dict[filtru_afisare_firma]
+    # Lista de mașini este filtrată automat în funcție de aceeași selecție a firmei de sus.
+    # Dacă este "Nicio firmă", se afișază toate mașinile din baza de date.
+    if m_firma != "Nicio firmă":
+        firma_id_selectat = firme_dict[m_firma]
         c.execute("""
             SELECT m.id, f.nume_firma, m.denumire, m.tip_masina, m.serie, m.an_fabricatie, m.subansambluri, m.erori, m.defecte, m.remediu, m.piese_necesare, m.piese_inlocuite, m.tipuri_fluide, m.tip_intretinere 
             FROM masini m JOIN firme f ON m.firma_id = f.id WHERE m.firma_id = %s
         """, (firma_id_selectat,))
     else:
-        # Dacă se alege "Nicio firmă", se returnează toate mașinile din baza de date
         c.execute("""
             SELECT m.id, f.nume_firma, m.denumire, m.tip_masina, m.serie, m.an_fabricatie, m.subansambluri, m.erori, m.defecte, m.remediu, m.piese_necesare, m.piese_inlocuite, m.tipuri_fluide, m.tip_intretinere 
             FROM masini m JOIN firme f ON m.firma_id = f.id
@@ -535,7 +533,7 @@ with tab_masini:
                             st.success("Mașina a fost ștearsă din Supabase!")
                             st.rerun()
     else:
-        st.info("Nu există mașini înregistrate pentru filtrul selectat.")
+        st.info("Nu există mașini înregistrate pentru firma selectată.")
     conn.close()
 
 # ------------------------------------------------------------------------------
