@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------------
-# APLICATIE STREAMLIT OPTIMIZATĂ PENTRU SUPABASE (POSTGRESQL) - VERSIUNE PERFORMANTĂ
+# APLICATIE STREAMLIT ULTRA-OPTIMIZATĂ PENTRU SUPABASE (POSTGRESQL)
 #-----------------------------------------------------------------------------------
 
 import os
@@ -39,7 +39,7 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------------------------
-# 2. Funcții Optimizate cu Cache pentru Reducerea Interogărilor Redundante
+# 2. Funcții Optimizate cu Cache pentru Performanță Maximă (Fără lag la schimbări)
 # ------------------------------------------------------------------------------
 @st.cache_data(ttl=300)
 def get_setari():
@@ -56,14 +56,7 @@ def get_setari():
 def get_firme():
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute("""
-        SELECT id,
-               nume_firma,
-               nume_persoana,
-               email
-        FROM firme
-        ORDER BY nume_firma
-    """)
+    c.execute("SELECT id, nume_firma, nume_persoana, email FROM firme ORDER BY nume_firma")
     data = c.fetchall()
     conn.close()
     return data
@@ -72,10 +65,7 @@ def get_firme():
 def get_masini():
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute("""
-        SELECT id, firma_id, denumire, tip_masina, serie, an_fabricatie, subansambluri, erori, defecte, remediu, piese_necesare, piese_inlocuite, tipuri_fluide, data_intretinere, tip_intretinere
-        FROM masini
-    """)
+    c.execute("SELECT id, firma_id, denumire, tip_masina, serie, an_fabricatie, subansambluri, erori, defecte, remediu, piese_necesare, piese_inlocuite, tipuri_fluide, data_intretinere, tip_intretinere FROM masini")
     data = c.fetchall()
     conn.close()
     return data
@@ -84,11 +74,32 @@ def get_masini():
 def get_piese():
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute("""
-        SELECT id, denumire, cod_producator, cod_comercial, masina_montaj, subansamblu
-        FROM piese
-        ORDER BY denumire
-    """)
+    c.execute("SELECT id, denumire, cod_producator, cod_comercial, masina_montaj, subansamblu FROM piese ORDER BY denumire")
+    data = c.fetchall()
+    conn.close()
+    return data
+
+@st.cache_data(ttl=300)
+def get_piese_filtrate(select_masina_unica):
+    conn = get_db_connection()
+    c = conn.cursor()
+    if select_masina_unica != "Toate mașinile / General":
+        c.execute("""
+            SELECT * FROM piese 
+            WHERE LOWER(TRIM(masina_montaj)) LIKE LOWER(%s)
+               OR LOWER(masina_montaj) LIKE LOWER(%s)
+               OR LOWER(masina_montaj) LIKE LOWER(%s)
+               OR LOWER(TRIM(masina_montaj)) = 'general'
+               OR masina_montaj = ''
+               OR masina_montaj IS NULL
+            ORDER BY denumire
+        """, (
+            f"%{select_masina_unica.strip()}%", 
+            f"{select_masina_unica.strip()},%", 
+            f"%, {select_masina_unica.strip()}%"
+        ))
+    else:
+        c.execute("SELECT * FROM piese ORDER BY denumire")
     data = c.fetchall()
     conn.close()
     return data
@@ -100,12 +111,10 @@ class RaportPDF(FPDF):
     def header(self):
         self.set_fill_color(30, 41, 59)
         self.rect(0, 0, 210, 25, 'F')
-        
         self.set_font('Helvetica', 'B', 16)
         self.set_text_color(255, 255, 255)
         self.set_xy(10, 8)
         self.cell(0, 10, 'RAPORT DE INTERVENTIE TEHNICA', 0, 0, 'L')
-        
         self.set_font('Helvetica', '', 10)
         self.set_xy(140, 8)
         self.cell(60, 10, 'DOCUMENT OFICIAL', 0, 0, 'R')
@@ -139,13 +148,7 @@ def genereaza_pdf(data):
     BG_LIGHT = (241, 245, 249)
     
     setari_pdf = get_setari()
-    nume_emitent = setari_pdf[0]
-    cui_emitent = setari_pdf[1]
-    reg_emitent = setari_pdf[2]
-    adresa_emitent = setari_pdf[3]
-    banca_emitent = setari_pdf[4]
-    iban_emitent = setari_pdf[5]
-    swep_emitent = setari_pdf[6]
+    nume_emitent, cui_emitent, reg_emitent, adresa_emitent, banca_emitent, iban_emitent, swep_emitent = setari_pdf[:7]
 
     pdf.set_font('Helvetica', 'B', 9)
     pdf.set_text_color(*PRIMARY)
@@ -153,20 +156,17 @@ def genereaza_pdf(data):
     pdf.set_font('Helvetica', '', 8)
     pdf.set_text_color(*SECONDARY)
     pdf.cell(0, 4, curata_text(f"Adresă: {adresa_emitent} | Bancă: {banca_emitent} | IBAN: {iban_emitent} | SWIFT: {swep_emitent}"), 0, 1, 'L')
-    
     pdf.ln(6)
 
     pdf.set_font('Helvetica', 'B', 11)
     pdf.set_text_color(*PRIMARY)
     pdf.cell(100, 7, curata_text(f"Nr. Inregistrare: #{data['id']}"), 0, 0)
     pdf.cell(90, 7, curata_text(f"Data: {str(data['data'])[:10]}"), 0, 1, 'R')
-    
     pdf.line(10, pdf.get_y() + 2, 200, pdf.get_y() + 2)
     pdf.ln(6)
 
     pdf.set_fill_color(*BG_LIGHT)
     pdf.rect(10, pdf.get_y(), 190, 32, 'F')
-    
     pdf.set_xy(12, pdf.get_y() + 2)
     pdf.set_font('Helvetica', 'B', 10)
     pdf.set_text_color(*PRIMARY)
@@ -175,20 +175,16 @@ def genereaza_pdf(data):
     
     pdf.set_font('Helvetica', '', 9)
     pdf.set_text_color(0, 0, 0)
-    
     pdf.set_x(12)
     pdf.cell(90, 5, curata_text(f"Client: {data['client'] or 'Nespecificat'}"), 0, 0)
     pdf.cell(90, 5, curata_text(f"Echipament: {data['masina']} ({data.get('subansamblu','')})"), 0, 1)
-    
     pdf.set_x(12)
     pdf.cell(90, 5, curata_text(f"Durata: {data['durata']} minute"), 0, 0)
     pdf.cell(90, 5, curata_text(f"Cod Eroare: {data.get('cod_eroare','N/A')}"), 0, 1)
-
     pdf.set_x(12)
     pdf.cell(90, 5, "", 0, 0)
     pdf.set_font('Helvetica', 'B', 9)
     pdf.cell(90, 5, curata_text(f"Stare Finala: {data['stare_finala']}"), 0, 1)
-    
     pdf.ln(8)
 
     def adauga_sectiune(titlu, continut):
@@ -236,44 +232,27 @@ def genereaza_pdf(data):
     pdf.set_y(-45)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(4)
-    
     pdf.set_font('Helvetica', 'B', 9)
     pdf.set_text_color(*PRIMARY)
     pdf.cell(95, 5, curata_text("EFECTUAT DE (TEHNICIAN)"), 0, 0, 'C')
     pdf.cell(95, 5, curata_text("VERIFICAT / RECEPTIONAT DE"), 0, 1, 'C')
-    
     pdf.set_font('Helvetica', '', 9)
     pdf.set_text_color(0, 0, 0)
     pdf.cell(95, 5, curata_text(f"Nume: {data['tehnician'] or 'Tehnician Nexus'}"), 0, 0, 'C')
     pdf.cell(95, 5, curata_text(f"Nume: {data['verificator'] or 'Client'}"), 0, 1, 'C')
-    
     pdf.ln(8)
     pdf.cell(95, 5, curata_text("Semnatura: ___________________"), 0, 0, 'C')
     pdf.cell(95, 5, curata_text("Semnatura: ___________________"), 0, 1, 'C')
 
-    try:
-        output = pdf.output()
-    except TypeError:
-        output = pdf.output(dest='S')
-
-    if isinstance(output, bytes):
-        return output
-    elif isinstance(output, bytearray):
-        return bytes(output)
-    elif isinstance(output, str):
-        return output.encode('latin1')
-    else:
-        return str(output).encode('latin1', errors='ignore')
+    output = pdf.output(dest='S') if hasattr(pdf, 'output') else pdf.output()
+    return output if isinstance(output, bytes) else output.encode('latin1', errors='ignore')
 
 # ------------------------------------------------------------------------------
-# 4. Funcție Trimitere Email prin SMTP (cu verificare adresă client)
+# 4. Trimitere Email prin SMTP
 # ------------------------------------------------------------------------------
 def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume_fisier):
     setari = get_setari()
-    smtp_srv = setari[7]
-    smtp_p = setari[8]
-    smtp_u = setari[9]
-    smtp_pwd = setari[10]
+    smtp_srv, smtp_p, smtp_u, smtp_pwd = setari[7], setari[8], setari[9], setari[10]
     email_tehnician = setari[12] if len(setari) > 12 else ""
     
     msg = EmailMessage()
@@ -281,10 +260,8 @@ def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume
     msg['From'] = smtp_u if smtp_u else "contact@nexusindustrial.ro"
     
     destinatari = []
-    
     if destinatar_client and destinatar_client.strip():
         destinatari.append(destinatar_client.strip())
-    
     if email_tehnician:
         destinatari.append(email_tehnician.strip())
     destinatari.append("contact@nexusindustrial.ro")
@@ -292,7 +269,6 @@ def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume
     destinatari_unice = [d for d in destinatari if d and d.strip()]
     msg['To'] = ", ".join(destinatari_unice)
     msg.set_content(corp_mesaj)
-    
     if pdf_bytes:
         msg.add_attachment(pdf_bytes, maintype='application', subtype='pdf', filename=nume_fisier)
     
@@ -302,11 +278,7 @@ def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume
             if smtp_pwd and smtp_u:
                 server.login(smtp_u, smtp_pwd)
                 server.send_message(msg)
-                
-                if not (destinatar_client and destinatar_client.strip()):
-                    return True, "clientul nu are o adresa de email iar emailul va fi trimis doar la personalul Nexus"
-                else:
-                    return True, f"E-mail trimis cu succes către: {', '.join(destinatari_unice)}"
+                return True, f"E-mail trimis cu succes către: {', '.join(destinatari_unice)}"
             else:
                 return False, "Setările SMTP (User sau Parolă) nu sunt completate."
     except Exception as e:
@@ -361,54 +333,45 @@ with tab_firme:
             
         if st.form_submit_button("💾 Salvează Firmă Nouă"):
             if nume_firma and nume_persoana:
-                c.execute("""
-                    INSERT INTO firme (nume_firma, cui, reg_com, adresa, banca, cont, nume_persoana, email, telefon)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (nume_firma, cui, reg_com, adresa, banca, cont, nume_persoana, email, telefon))
+                c.execute("INSERT INTO firme (nume_firma, cui, reg_com, adresa, banca, cont, nume_persoana, email, telefon) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)", 
+                          (nume_firma, cui, reg_com, adresa, banca, cont, nume_persoana, email, telefon))
                 conn.commit()
                 st.cache_data.clear()
-                st.success(f"Firma **{nume_firma}** a fost salvată în Supabase!")
+                st.success(f"Firma **{nume_firma}** a fost salvată!")
                 st.rerun()
             else:
                 st.error("Completați câmpurile obligatorii (*).")
 
     st.markdown("---")
-    st.subheader("📋 Firme Înregistrate (Modificare & Ștergere)")
+    st.subheader("📋 Firme Înregistrate")
     firme_db = get_firme()
     
     for f in firme_db:
         fid, fnume, fpers, femail = f[0], f[1], f[2], f[3]
         c.execute("SELECT cui, reg_com, adresa, banca, cont, telefon FROM firme WHERE id = %s", (fid,))
         detalii_f = c.fetchone()
-        fcui = detalii_f[0] if detalii_f else ""
-        freg = detalii_f[1] if detalii_f else ""
-        fadr = detalii_f[2] if detalii_f else ""
-        fbanca = detalii_f[3] if detalii_f else ""
-        fcont = detalii_f[4] if detalii_f else ""
-        ftel = detalii_f[5] if detalii_f else ""
+        fcui, freg, fadr, fbanca, fcont, ftel = detalii_f if detalii_f else ("", "", "", "", "", "")
 
         with st.expander(f"🏢 {fnume} (CUI: {fcui or 'N/A'}) - Contact: {fpers}"):
             with st.form(f"mod_firma_{fid}"):
                 mf_nume = st.text_input("Nume Firmă", value=fnume, key=f"mf_n_{fid}")
-                mf_cui = st.text_input("CUI", value=fcui or "", key=f"mf_cui_{fid}")
-                mf_reg = st.text_input("Reg. Com.", value=freg or "", key=f"mf_reg_{fid}")
-                mf_adr = st.text_input("Adresă", value=fadr or "", key=f"mf_adr_{fid}")
-                mf_banca = st.text_input("Bancă", value=fbanca or "", key=f"mf_b_{fid}")
-                mf_cont = st.text_input("Cont", value=fcont or "", key=f"mf_cont_{fid}")
+                mf_cui = st.text_input("CUI", value=fcui, key=f"mf_cui_{fid}")
+                mf_reg = st.text_input("Reg. Com.", value=freg, key=f"mf_reg_{fid}")
+                mf_adr = st.text_input("Adresă", value=fadr, key=f"mf_adr_{fid}")
+                mf_banca = st.text_input("Bancă", value=fbanca, key=f"mf_b_{fid}")
+                mf_cont = st.text_input("Cont", value=fcont, key=f"mf_cont_{fid}")
                 mf_pers = st.text_input("Persoană Contact", value=fpers, key=f"mf_p_{fid}")
-                mf_email = st.text_input("Email", value=femail or "", key=f"mf_e_{fid}")
-                mf_tel = st.text_input("Telefon", value=ftel or "", key=f"mf_t_{fid}")
+                mf_email = st.text_input("Email", value=femail, key=f"mf_e_{fid}")
+                mf_tel = st.text_input("Telefon", value=ftel, key=f"mf_t_{fid}")
                 
                 col_m1, col_m2 = st.columns(2)
                 with col_m1:
                     if st.form_submit_button("🔄 Modifică Tot"):
-                        c.execute("""
-                            UPDATE firme SET nume_firma=%s, cui=%s, reg_com=%s, adresa=%s, banca=%s, cont=%s, nume_persoana=%s, email=%s, telefon=%s
-                            WHERE id=%s
-                        """, (mf_nume, mf_cui, mf_reg, mf_adr, mf_banca, mf_cont, mf_pers, mf_email, mf_tel, fid))
+                        c.execute("UPDATE firme SET nume_firma=%s, cui=%s, reg_com=%s, adresa=%s, banca=%s, cont=%s, nume_persoana=%s, email=%s, telefon=%s WHERE id=%s",
+                                  (mf_nume, mf_cui, mf_reg, mf_adr, mf_banca, mf_cont, mf_pers, mf_email, mf_tel, fid))
                         conn.commit()
                         st.cache_data.clear()
-                        st.success("Firma a fost actualizată în Supabase!")
+                        st.success("Firma a fost actualizată!")
                         st.rerun()
                 with col_m2:
                     if st.form_submit_button("🗑️ Șterge Firma"):
@@ -416,14 +379,11 @@ with tab_firme:
                             c.execute("DELETE FROM firme WHERE id=%s", (fid,))
                             conn.commit()
                             st.cache_data.clear()
-                            st.success("Firma a fost ștearsă din Supabase!")
+                            st.success("Firma a fost ștearsă!")
                             st.rerun()
-                        except psycopg2.errors.ForeignKeyViolation:
-                            conn.rollback()
-                            st.error("Sterge masinile asociate acestei firme si apoi sterge firma.")
                         except Exception as e:
                             conn.rollback()
-                            st.error(f"Eroare la ștergere: {str(e)}")
+                            st.error(f"Eroare: {str(e)}")
     conn.close()
 
 # ------------------------------------------------------------------------------
@@ -436,8 +396,7 @@ with tab_masini:
     firme_list = get_firme()
     firme_dict = {f[1]: f[0] for f in firme_list}
     
-    lista_firme_select = ["Nicio firmă"] + list(firme_dict.keys())
-    m_firma = st.selectbox("Selectează Firma Proprietară", options=lista_firme_select, key="select_firma_principal_masini")
+    m_firma = st.selectbox("Selectează Firma Proprietară", options=["Nicio firmă"] + list(firme_dict.keys()), key="select_firma_principal_masini")
     
     st.markdown("---")
     st.subheader("➕ Adaugă Mașină Nouă")
@@ -464,75 +423,57 @@ with tab_masini:
             if m_firma != "Nicio firmă" and m_denumire:
                 firma_id = firme_dict[m_firma]
                 if m_defecte and m_remediu:
-                    c.execute("INSERT INTO optimizari_interventie (masina, defect, pas_numar, descriere_pas) VALUES (%s, %s, %s, %s)",
-                              (m_denumire, m_defecte, 1, m_remediu))
-                
-                c.execute("""
-                    INSERT INTO masini (firma_id, denumire, tip_masina, serie, an_fabricatie, subansambluri, erori, defecte, remediu, piese_necesare, piese_inlocuite, tipuri_fluide, data_intretinere, tip_intretinere)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (firma_id, m_denumire, m_tip, m_serie, m_an, m_sub, m_erori, m_defecte, m_remediu, m_piese_nec, m_piese_inloc, m_fluide, str(m_data_ment), m_tip_ment))
+                    c.execute("INSERT INTO optimizari_interventie (masina, defect, pas_numar, descriere_pas) VALUES (%s, %s, %s, %s)", (m_denumire, m_defecte, 1, m_remediu))
+                c.execute("INSERT INTO masini (firma_id, denumire, tip_masina, serie, an_fabricatie, subansambluri, erori, defecte, remediu, piese_necesare, piese_inlocuite, tipuri_fluide, data_intretinere, tip_intretinere) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                          (firma_id, m_denumire, m_tip, m_serie, m_an, m_sub, m_erori, m_defecte, m_remediu, m_piese_nec, m_piese_inloc, m_fluide, str(m_data_ment), m_tip_ment))
                 conn.commit()
                 st.cache_data.clear()
-                st.success(f"Mașina **{m_denumire}** a fost salvată în Supabase!")
+                st.success(f"Mașina **{m_denumire}** a fost salvată!")
                 st.rerun()
             else:
-                st.error("Selectați o firmă validă (alta decât 'Nicio firmă') din meniul de sus și introduceți denumirea mașinii.")
+                st.error("Selectați o firmă validă și introduceți denumirea mașinii.")
 
     st.markdown("---")
     st.subheader("📋 Mașini Înregistrate")
-    
     if m_firma != "Nicio firmă":
-        firma_id_selectat = firme_dict[m_firma]
-        c.execute("""
-            SELECT m.id, f.nume_firma, m.denumire, m.tip_masina, m.serie, m.an_fabricatie, m.subansambluri, m.erori, m.defecte, m.remediu, m.piese_necesare, m.piese_inlocuite, m.tipuri_fluide, m.tip_intretinere 
-            FROM masini m JOIN firme f ON m.firma_id = f.id WHERE m.firma_id = %s
-        """, (firma_id_selectat,))
+        c.execute("SELECT m.id, f.nume_firma, m.denumire, m.tip_masina, m.serie, m.an_fabricatie, m.subansambluri, m.erori, m.defecte, m.remediu, m.piese_necesare, m.piese_inlocuite, m.tipuri_fluide, m.tip_intretinere FROM masini m JOIN firme f ON m.firma_id = f.id WHERE m.firma_id = %s", (firme_dict[m_firma],))
     else:
-        c.execute("""
-            SELECT m.id, f.nume_firma, m.denumire, m.tip_masina, m.serie, m.an_fabricatie, m.subansambluri, m.erori, m.defecte, m.remediu, m.piese_necesare, m.piese_inlocuite, m.tipuri_fluide, m.tip_intretinere 
-            FROM masini m JOIN firme f ON m.firma_id = f.id
-        """)
-        
-    masini_db = c.fetchall()
+        c.execute("SELECT m.id, f.nume_firma, m.denumire, m.tip_masina, m.serie, m.an_fabricatie, m.subansambluri, m.erori, m.defecte, m.remediu, m.piese_necesare, m.piese_inlocuite, m.tipuri_fluide, m.tip_intretinere FROM masini m JOIN firme f ON m.firma_id = f.id")
     
-    if masini_db:
-        for m in masini_db:
-            mid, mfirma, mden, mtip, mser, man, msub, meri, mdef, mrem, mpnec, mpinl, mflu, mtipm = m
-            with st.expander(f"⚙️ {mden} (Firma: {mfirma})"):
-                with st.form(f"mod_masina_{mid}"):
-                    mm_den = st.text_input("Denumire", value=mden, key=f"mm_d_{mid}")
-                    mm_tip = st.text_input("Tip", value=mtip or "", key=f"mm_tip_{mid}")
-                    mm_ser = st.text_input("Serie", value=mser or "", key=f"mm_ser_{mid}")
-                    mm_an = st.number_input("An", value=int(man) if man else 2020, key=f"mm_an_{mid}")
-                    mm_sub = st.text_input("Subansambluri", value=msub or "", key=f"mm_sub_{mid}")
-                    mm_eri = st.text_input("Erori", value=meri or "", key=f"mm_eri_{mid}")
-                    mm_def = st.text_area("Defecte", value=mdef or "", key=f"mm_def_{mid}")
-                    mm_rem = st.text_area("Remediu", value=mrem or "", key=f"mm_rem_{mid}")
-                    mm_pnec = st.text_area("Piese Necesare", value=mpnec or "", key=f"mm_pnec_{mid}")
-                    mm_pinl = st.text_area("Piese Înlocuite", value=mpinl or "", key=f"mm_pinl_{mid}")
-                    mm_flu = st.text_area("Fluide", value=mflu or "", key=f"mm_flu_{mid}")
-                    mm_tipm = st.selectbox("Tip Întreținere", ["Lunară", "Semestrială", "Anuală"], index=0, key=f"mm_tipm_{mid}")
-                    
-                    col_mm1, col_mm2 = st.columns(2)
-                    with col_mm1:
-                        if st.form_submit_button("🔄 Modifică Tot"):
-                            c.execute("""
-                                UPDATE masini SET denumire=%s, tip_masina=%s, serie=%s, an_fabricatie=%s, subansambluri=%s, erori=%s, defecte=%s, remediu=%s, piese_necesare=%s, piese_inlocuite=%s, tipuri_fluide=%s, tip_intretinere=%s
-                                WHERE id=%s
-                            """, (mm_den, mm_tip, mm_ser, mm_an, mm_sub, mm_eri, mm_def, mm_rem, mm_pnec, mm_pinl, mm_flu, mm_tipm, mid))
-                            conn.commit()
-                            st.cache_data.clear()
-                            st.success("Mașină actualizată în Supabase!")
-                            st.rerun()
-                    with col_mm2:
-                        if st.form_submit_button("🗑️ Șterge Mașina"):
-                            c.execute("DELETE FROM masini WHERE id=%s", (mid,))
-                            conn.commit()
-                            st.cache_data.clear()
-                            st.success("Mașina a fost ștearsă din Supabase!")
-                            st.rerun()
-    else:
-        st.info("Nu există mașini înregistrate pentru firma selectată.")
+    masini_db = c.fetchall()
+    for m in masini_db:
+        mid, mfirma, mden, mtip, mser, man, msub, meri, mdef, mrem, mpnec, mpinl, mflu, mtipm = m
+        with st.expander(f"⚙️ {mden} (Firma: {mfirma})"):
+            with st.form(f"mod_masina_{mid}"):
+                mm_den = st.text_input("Denumire", value=mden, key=f"mm_d_{mid}")
+                mm_tip = st.text_input("Tip", value=mtip or "", key=f"mm_tip_{mid}")
+                mm_ser = st.text_input("Serie", value=mser or "", key=f"mm_ser_{mid}")
+                mm_an = st.number_input("An", value=int(man) if man else 2020, key=f"mm_an_{mid}")
+                mm_sub = st.text_input("Subansambluri", value=msub or "", key=f"mm_sub_{mid}")
+                mm_eri = st.text_input("Erori", value=meri or "", key=f"mm_eri_{mid}")
+                mm_def = st.text_area("Defecte", value=mdef or "", key=f"mm_def_{mid}")
+                mm_rem = st.text_area("Remediu", value=mrem or "", key=f"mm_rem_{mid}")
+                mm_pnec = st.text_area("Piese Necesare", value=mpnec or "", key=f"mm_pnec_{mid}")
+                mm_pinl = st.text_area("Piese Înlocuite", value=mpinl or "", key=f"mm_pinl_{mid}")
+                mm_flu = st.text_area("Fluide", value=mflu or "", key=f"mm_flu_{mid}")
+                mm_tipm = st.selectbox("Tip Întreținere", ["Lunară", "Semestrială", "Anuală"], index=0, key=f"mm_tipm_{mid}")
+                
+                col_mm1, col_mm2 = st.columns(2)
+                with col_mm1:
+                    if st.form_submit_button("🔄 Modifică Tot"):
+                        c.execute("UPDATE masini SET denumire=%s, tip_masina=%s, serie=%s, an_fabricatie=%s, subansambluri=%s, erori=%s, defecte=%s, remediu=%s, piese_necesare=%s, piese_inlocuite=%s, tipuri_fluide=%s, tip_intretinere=%s WHERE id=%s",
+                                  (mm_den, mm_tip, mm_ser, mm_an, mm_sub, mm_eri, mm_def, mm_rem, mm_pnec, mm_pinl, mm_flu, mm_tipm, mid))
+                        conn.commit()
+                        st.cache_data.clear()
+                        st.success("Mașină actualizată!")
+                        st.rerun()
+                with col_mm2:
+                    if st.form_submit_button("🗑️ Șterge Mașina"):
+                        c.execute("DELETE FROM masini WHERE id=%s", (mid,))
+                        conn.commit()
+                        st.cache_data.clear()
+                        st.success("Mașina a fost ștearsă!")
+                        st.rerun()
     conn.close()
 
 # ------------------------------------------------------------------------------
@@ -542,7 +483,6 @@ with tab_activitati:
     st.subheader("📝 Activități Zilnice & Raport Intervenție Tehnică")
     conn = get_db_connection()
     c = conn.cursor()
-    
     firme_db_all = get_firme()
     firme_activ = [f[1] for f in firme_db_all]
     
@@ -550,7 +490,6 @@ with tab_activitati:
         st.warning("⚠️ Adăugați cel puțin o firmă în Tabul 5.")
     else:
         sel_firma = st.selectbox("1. Alege Firma la care lucrezi", options=firme_activ, key="act_firma")
-        
         persoane_contact_firma = [f[2] for f in firme_db_all if f[1] == sel_firma]
         email_client_destinatar = [f[3] for f in firme_db_all if f[1] == sel_firma][0] if firme_db_all else ""
         
@@ -572,7 +511,6 @@ with tab_activitati:
             titlu_lucrare = st.text_input("Titlu Lucrare", value="Intervenție tehnică")
             simptom = st.text_area("Simptom Inițial Reclamat")
             defect = st.text_area("Defect Constatat")
-            
             erori_masina = []
             if masini_firma and sel_masina != "Nicio mașină":
                 c.execute("SELECT erori FROM masini WHERE denumire = %s", (sel_masina,))
@@ -580,7 +518,6 @@ with tab_activitati:
                 if e_db and e_db[0]:
                     erori_masina = [e.strip() for e in e_db[0].split(",")]
             cod_eroare = st.selectbox("Cod Eroare", options=["Niciunul"] + erori_masina)
-            
         with c2:
             solutie = st.text_area("Soluție / Lucrări Executate")
             durata_min = st.number_input("Durată Intervenție (minute)", value=60, step=15)
@@ -627,14 +564,11 @@ with tab_activitati:
             st.session_state["ultimul_id_salvat"] = None
 
         col_b1, col_b2, col_b3 = st.columns(3)
-        
         with col_b1:
             if st.button("💾 Salvează Activitatea în DB", type="primary"):
                 piese_valide = [p for p in st.session_state["randuri_piese"] if p["piesa"] != "Selectează..."]
-                c.execute("""
-                    INSERT INTO reparatii (firma, masina, subansamblu, defect, cod_eroare, piese_json, titlu, simptom, solutie, stare_finala, durata, optimizari, tehnician, verificator)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (sel_firma, sel_masina, sel_subansamblu, defect, cod_eroare, json.dumps(piese_valide, ensure_ascii=False), titlu_lucrare, simptom, solutie, stare_fin, durata_min, optimizari, tehnician_nume, verificator_nume))
+                c.execute("INSERT INTO reparatii (firma, masina, subansamblu, defect, cod_eroare, piese_json, titlu, simptom, solutie, stare_finala, durata, optimizari, tehnician, verificator) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                          (sel_firma, sel_masina, sel_subansamblu, defect, cod_eroare, json.dumps(piese_valide, ensure_ascii=False), titlu_lucrare, simptom, solutie, stare_fin, durata_min, optimizari, tehnician_nume, verificator_nume))
                 conn.commit()
                 
                 c.execute("SELECT id FROM reparatii ORDER BY id DESC LIMIT 1")
@@ -642,82 +576,50 @@ with tab_activitati:
                 if ultima_inreg:
                     rid_nou = ultima_inreg[0]
                     st.session_state["ultimul_id_salvat"] = rid_nou
-                    
                     setari_info = get_setari()
                     sheet_url = setari_info[11]
                     if sheet_url:
                         try:
-                            ora_curenta = datetime.now().strftime("%H:%M:%S")
-                            data_curenta = datetime.now().strftime("%Y-%m-%d")
-                            piese_utilizate_str = ", ".join([f"{p.get('piesa')} ({p.get('cantitate')})" for p in piese_valide if p.get('tip') in ['Utilizata', 'Inlocuita']])
-                            piese_necesare_str = ", ".join([f"{p.get('piesa')} ({p.get('cantitate')})" for p in piese_valide if p.get('tip') in ['Necesara', 'De Comandat']])
-                            
                             payload_sheet = {
-                                "status": "nefacturat",
-                                "id": str(rid_nou),
-                                "data": str(data_curenta),
-                                "ora": str(ora_curenta),
-                                "firma": str(sel_firma),
-                                "masina": str(sel_masina),
-                                "subansamblu": str(sel_subansamblu or "General"),
-                                "solutie": str(solutie or ""),
-                                "verificator": str(verificator_nume or ""),
-                                "tehnician": str(tehnician_nume or ""),
-                                "piese utilizate": str(piese_utilizate_str),
-                                "necesar piese": str(piese_necesare_str)
+                                "status": "nefacturat", "id": str(rid_nou), "data": datetime.now().strftime("%Y-%m-%d"),
+                                "ora": datetime.now().strftime("%H:%M:%S"), "firma": str(sel_firma), "masina": str(sel_masina),
+                                "subansamblu": str(sel_subansamblu or "General"), "solutie": str(solutie or ""),
+                                "verificator": str(verificator_nume or ""), "tehnician": str(tehnician_nume or ""),
+                                "piese utilizate": ", ".join([f"{p.get('piesa')} ({p.get('cantitate')})" for p in piese_valide if p.get('tip') in ['Utilizata', 'Inlocuita']]),
+                                "necesar piese": ", ".join([f"{p.get('piesa')} ({p.get('cantitate')})" for p in piese_valide if p.get('tip') in ['Necesara', 'De Comandat']])
                             }
-                            req_data = json.dumps(payload_sheet).encode('utf-8')
-                            req = urllib.request.Request(sheet_url, data=req_data, headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'})
+                            req = urllib.request.Request(sheet_url, data=json.dumps(payload_sheet).encode('utf-8'), headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'})
                             with urllib.request.urlopen(req) as response:
                                 response.read().decode('utf-8')
                         except Exception as e:
-                            st.warning(f"Nu s-a putut trimite în Google Sheet: {str(e)}")
+                            st.warning(f"Google Sheet error: {str(e)}")
 
                 st.session_state["raport_salvat"] = True
-                st.success("Activitatea a fost salvată în Supabase și trimisă în Google Sheet!")
+                st.success("Activitatea a fost salvată!")
                 st.rerun()
                 
         if st.session_state["raport_salvat"] and st.session_state["ultimul_id_salvat"]:
             rid = st.session_state["ultimul_id_salvat"]
-            
             c.execute("SELECT id, firma, masina, subansamblu, durata, cod_eroare, stare_finala, piese_json, titlu, simptom, defect, solutie, optimizari, tehnician, verificator, data_creare FROM reparatii WHERE id=%s", (rid,))
             full_rep_salvat = c.fetchone()
-            
             if full_rep_salvat:
-                rdata = full_rep_salvat[15]
-                piese_data_salvate = json.loads(full_rep_salvat[7]) if full_rep_salvat[7] else []
-                
                 date_pdf = {
                     "id": full_rep_salvat[0], "client": full_rep_salvat[1], "masina": full_rep_salvat[2], "subansamblu": full_rep_salvat[3],
-                    "durata": full_rep_salvat[4], "cod_eroare": full_rep_salvat[5], "stare_finala": full_rep_salvat[6], "piese_json": piese_data_salvate,
+                    "durata": full_rep_salvat[4], "cod_eroare": full_rep_salvat[5], "stare_finala": full_rep_salvat[6], "piese_json": json.loads(full_rep_salvat[7]) if full_rep_salvat[7] else [],
                     "titlu": full_rep_salvat[8], "simptom": full_rep_salvat[9], "defect": full_rep_salvat[10], "solutie": full_rep_salvat[11],
-                    "optimizari": full_rep_salvat[12], "tehnician": full_rep_salvat[13], "verificator": full_rep_salvat[14], "data": rdata
+                    "optimizari": full_rep_salvat[12], "tehnician": full_rep_salvat[13], "verificator": full_rep_salvat[14], "data": full_rep_salvat[15]
                 }
-                
                 with col_b2:
                     if st.button("Generează PDF"):
                         st.session_state["pdf_bytes_curent"] = genereaza_pdf(date_pdf)
-                        
                     if "pdf_bytes_curent" in st.session_state and st.session_state["pdf_bytes_curent"]:
-                        st.download_button(
-                            label=f"📥 Printează / Descarcă Raport #{rid}",
-                            data=st.session_state["pdf_bytes_curent"],
-                            file_name=f"Raport_Interventie_{rid}.pdf",
-                            mime="application/pdf",
-                            type="primary"
-                        )
-                    
+                        st.download_button(label=f"📥 Descarcă Raport #{rid}", data=st.session_state["pdf_bytes_curent"], file_name=f"Raport_{rid}.pdf", mime="application/pdf", type="primary")
                 with col_b3:
-                    if st.button("📧 Trimite pe Email către Verificator"):
+                    if st.button("📧 Trimite pe Email"):
                         pdf_bytes_email = st.session_state.get("pdf_bytes_curent") or genereaza_pdf(date_pdf)
-                        subiect = f"Raport de Interventie Tehnica #{rid} - {sel_firma}"
-                        corp = f"Stimate beneficiar ({verificator_nume}),\n\nVă atașăm raportul de intervenție tehnică #{rid} pentru echipamentul {sel_masina}.\n\nEchipa NexInd"
-                        
-                        success, msg = trimite_email_raport(email_client_destinatar, subiect, corp, pdf_bytes_email, f"Raport_{rid}.pdf")
-                        if success:
-                            st.success(msg)
-                        else:
-                            st.error(msg)
+                        success, msg = trimite_email_raport(email_client_destinatar, f"Raport #{rid} - {sel_firma}", f"Vă atașăm raportul #{rid}.", pdf_bytes_email, f"Raport_{rid}.pdf")
+                        if success: st.success(msg)
+                        else: st.error(msg)
     conn.close()
 
 # ------------------------------------------------------------------------------
@@ -727,11 +629,10 @@ with tab_optimizare:
     st.subheader("📊 Documentatii / Proceduri de reparații")
     conn = get_db_connection()
     c = conn.cursor()
-    masini_rows = get_masini()
-    masini_existente = [row[2] for row in masini_rows]
+    masini_existente = [row[2] for row in get_masini()]
     
     if not masini_existente:
-        st.warning("⚠️ Introduceți mai întâi mașini în Tabul 3.")
+        st.warning("⚠️ Adăugați mașini în Tabul 3.")
     else:
         sel_opt_masina = st.selectbox("Selectează Mașina", options=masini_existente, key="opt_m_sel")
         c.execute("SELECT DISTINCT defect FROM optimizari_interventie WHERE masina = %s", (sel_opt_masina,))
@@ -741,26 +642,21 @@ with tab_optimizare:
         def_final = st.text_input("Descriere Defect Nou") if sel_opt_defect == "+ Defect nou" else sel_opt_defect
             
         if sel_opt_defect != "+ Defect nou" and sel_opt_defect:
-            st.markdown(f"##### 🔎 Editare Pași de Reparație Existenti:")
+            st.markdown(f"##### 🔎 Editare Pași:")
             c.execute("SELECT id, pas_numar, descriere_pas FROM optimizari_interventie WHERE masina = %s AND defect = %s ORDER BY pas_numar", (sel_opt_masina, sel_opt_defect))
             pasii_db = c.fetchall()
-            
             with st.form(f"form_edita_pasi_{sel_opt_masina}_{sel_opt_defect}"):
-                pasi_editati_dict = {}
-                for pe in pasii_db:
-                    pid_pas, pnum, pdesc = pe[0], pe[1], pe[2]
-                    pasi_editati_dict[pid_pas] = st.text_input(f"Pasul {pnum}", value=pdesc, key=f"edit_pas_db_{pid_pas}")
-                
+                pasi_editati_dict = {pe[0]: st.text_input(f"Pasul {pe[1]}", value=pe[2], key=f"edit_pas_db_{pe[0]}") for pe in pasii_db}
                 col_ep1, col_ep2 = st.columns(2)
                 with col_ep1:
-                    if st.form_submit_button("🔄 Actualizează Pașii Modificați"):
+                    if st.form_submit_button("🔄 Actualizează Pașii"):
                         for pid_pas, val_noua in pasi_editati_dict.items():
                             c.execute("UPDATE optimizari_interventie SET descriere_pas = %s WHERE id = %s", (val_noua, pid_pas))
                         conn.commit()
-                        st.success("Procedura / pașii de reparație au fost actualizați cu succes!")
+                        st.success("Pașii au fost actualizați!")
                         st.rerun()
                 with col_ep2:
-                    if st.form_submit_button("🗑️ Șterge Toată Procedura"):
+                    if st.form_submit_button("🗑️ Șterge Procedura"):
                         c.execute("DELETE FROM optimizari_interventie WHERE masina = %s AND defect = %s", (sel_opt_masina, sel_opt_defect))
                         conn.commit()
                         st.success("Procedura a fost ștearsă!")
@@ -781,33 +677,28 @@ with tab_optimizare:
                     
         if st.session_state["pasi_lucrare_t"]:
             pasi_modificati = [st.text_input(f"Pas nou {idx+1}", value=pval, key=f"pas_ed_{idx}") for idx, pval in enumerate(st.session_state["pasi_lucrare_t"])]
-                
-            if st.button("💾 Salvează Toți Pașii Noi în Baza de Date", type="primary"):
+            if st.button("💾 Salvează Toți Pașii Noi", type="primary"):
                 if def_final:
                     c.execute("SELECT MAX(pas_numar) FROM optimizari_interventie WHERE masina = %s AND defect = %s", (sel_opt_masina, def_final))
                     max_p = c.fetchone()
                     start_nr = (max_p[0] if max_p and max_p[0] else 0) + 1
-                    
                     for idx, pval in enumerate(pasi_modificati):
-                        c.execute("INSERT INTO optimizari_interventie (masina, defect, pas_numar, descriere_pas) VALUES (%s, %s, %s, %s)",
-                                  (sel_opt_masina, def_final, start_nr + idx, pval))
+                        c.execute("INSERT INTO optimizari_interventie (masina, defect, pas_numar, descriere_pas) VALUES (%s, %s, %s, %s)", (sel_opt_masina, def_final, start_nr + idx, pval))
                     conn.commit()
                     st.session_state["pasi_lucrare_t"] = []
-                    st.success("Pașii noi au fost salvați în Supabase!")
+                    st.success("Pașii au fost salvați!")
                     st.rerun()
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 4: Tabelul de Piese (Un singur control unificat pentru filtrare și adăugare)
+# TAB 4: Tabelul de Piese (Un control unic unificat și instantaneu)
 # ------------------------------------------------------------------------------
 with tab_piese:
     st.subheader("🔧 Gestiune Piese de Schimb")
     conn = get_db_connection()
     c = conn.cursor()
-    masini_rows = get_masini()
-    masini_existente = [row[2] for row in masini_rows]
+    masini_existente = [row[2] for row in get_masini()]
     
-    # UN SINGUR ELEMENT DE SELECȚIE PRINCIPAL (Afișat sus, în afara form-urilor)
     select_masina_unica = st.selectbox(
         "Selectează Mașina (Filtrare listă & Asociere piesă nouă)", 
         options=["Toate mașinile / General"] + masini_existente, 
@@ -825,19 +716,16 @@ with tab_piese:
             p_cod_com = st.text_input("Cod Comercial")
         with c2:
             p_sub = st.text_input("Subansamblu")
-            # Informare clară legată de mașina preluată automat din controlul unic de sus
             st.info(f"📍 Piesa se va înregistra pentru: **{select_masina_unica}**")
             
         if st.form_submit_button("💾 Salvează Piesa"):
             if p_denumire:
                 masini_text_str = select_masina_unica if select_masina_unica != "Toate mașinile / General" else "General"
-                c.execute("""
-                    INSERT INTO piese (denumire, cod_producator, cod_comercial, masina_montaj, subansamblu)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (p_denumire, p_cod_prod, p_cod_com, masini_text_str, p_sub))
+                c.execute("INSERT INTO piese (denumire, cod_producator, cod_comercial, masina_montaj, subansamblu) VALUES (%s, %s, %s, %s, %s)",
+                          (p_denumire, p_cod_prod, p_cod_com, masini_text_str, p_sub))
                 conn.commit()
                 st.cache_data.clear()
-                st.success(f"Piesa **{p_denumire}** a fost salvată pentru **{masini_text_str}**!")
+                st.success(f"Piesa **{p_denumire}** a fost salvată!")
                 st.rerun()
             else:
                 st.error("Completați denumirea piesei.")
@@ -845,29 +733,8 @@ with tab_piese:
     st.markdown("---")
     st.subheader("📋 Piese Înregistrate (Modificare & Ștergere)")
     
-    # FILTRAREA INSTANTANEE ROBUSTă A LISTEI FOLOSIND ACELAȘI CONTROL UNIC DE SUS
-    if select_masina_unica != "Toate mașinile / General":
-        c.execute("""
-            SELECT * FROM piese 
-            WHERE LOWER(TRIM(masina_montaj)) LIKE LOWER(%s)
-               OR LOWER(masina_montaj) LIKE LOWER(%s)
-               OR LOWER(masina_montaj) LIKE LOWER(%s)
-               OR LOWER(TRIM(masina_montaj)) = 'general'
-               OR masina_montaj = ''
-               OR masina_montaj IS NULL
-            ORDER BY denumire
-        """, (
-            f"%{select_masina_unica.strip()}%", 
-            f"{select_masina_unica.strip()},%", 
-            f"%, {select_masina_unica.strip()}%"
-        ))
-    else:
-        c.execute("""
-            SELECT * FROM piese
-            ORDER BY denumire
-        """)
-        
-    piese_db_all = c.fetchall()
+    # Folosim funcția cache dedicată pentru filtrare rapidă, fără lag
+    piese_db_all = get_piese_filtrate(select_masina_unica)
     
     if piese_db_all:
         for p in piese_db_all:
@@ -883,20 +750,18 @@ with tab_piese:
                     col_mp1, col_mp2 = st.columns(2)
                     with col_mp1:
                         if st.form_submit_button("🔄 Actualizează Piesa"):
-                            c.execute("""
-                                UPDATE piese SET denumire=%s, cod_producator=%s, cod_comercial=%s, masina_montaj=%s, subansamblu=%s
-                                WHERE id=%s
-                            """, (mp_den, mp_prod, mp_com, mp_mas, mp_sub, pid))
+                            c.execute("UPDATE piese SET denumire=%s, cod_producator=%s, cod_comercial=%s, masina_montaj=%s, subansamblu=%s WHERE id=%s",
+                                      (mp_den, mp_prod, mp_com, mp_mas, mp_sub, pid))
                             conn.commit()
                             st.cache_data.clear()
-                            st.success("Piesa a fost actualizată în baza de date!")
+                            st.success("Piesa a fost actualizată!")
                             st.rerun()
                     with col_mp2:
                         if st.form_submit_button("🗑️ Șterge Piesa"):
                             c.execute("DELETE FROM piese WHERE id=%s", (pid,))
                             conn.commit()
                             st.cache_data.clear()
-                            st.success("Piesa a fost ștearsă din baza de date!")
+                            st.success("Piesa a fost ștearsă!")
                             st.rerun()
     else:
         st.info(f"Nu există piese înregistrate pentru selecția curentă ({select_masina_unica}).")
@@ -909,48 +774,23 @@ with tab_rapoarte:
     st.subheader("📋 Istoric Intervenții")
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute("""
-        SELECT *
-        FROM reparatii
-        ORDER BY id DESC
-        LIMIT 100
-    """)
+    c.execute("SELECT * FROM reparatii ORDER BY id DESC LIMIT 100")
     reparatii_db = c.fetchall()
     
     if reparatii_db:
         for full_rep in reparatii_db:
-            rid = full_rep[0]
-            rfirma = full_rep[1]
-            rmas = full_rep[2]
-            rsub = full_rep[3]
-            rdef = full_rep[4]
-            rcod_err = full_rep[5]
-            rpiese_json = full_rep[6]
-            rtit = full_rep[7]
-            rsimp = full_rep[8]
-            rsol = full_rep[9]
-            rstare = full_rep[10]
-            rdurata = full_rep[11]
-            ropt = full_rep[12]
-            rtech = full_rep[13]
-            rverif = full_rep[14]
-            rdata = full_rep[15]
-            
+            rid, rfirma, rmas, rsub, rdef, rcod_err, rpiese_json, rtit, rsimp, rsol, rstare, rdurata, ropt, rtech, rverif, rdata = full_rep
             with st.expander(f"📄 Raport Inregistrare #{rid} - Firmă: {rfirma} | Echipament: {rmas}"):
                 st.write(f"**Titlu:** {rtit}")
                 st.write(f"**Soluție:** {rsol}")
-                
-                piese_data = json.loads(rpiese_json) if rpiese_json else []
                 date_pdf = {
-                    "id": rid, "client": rfirma, "masina": rmas, "subansamblu": rsub,
-                    "durata": rdurata, "cod_eroare": rcod_err, "stare_finala": rstare, "piese_json": piese_data,
-                    "titlu": rtit, "simptom": rsimp, "defect": rdef, "solutie": rsol,
-                    "optimizari": ropt, "tehnician": rtech, "verificator": rverif, "data": rdata
+                    "id": rid, "client": rfirma, "masina": rmas, "subansamblu": rsub, "durata": rdurata,
+                    "cod_eroare": rcod_err, "stare_finala": rstare, "piese_json": json.loads(rpiese_json) if rpiese_json else [],
+                    "titlu": rtit, "simptom": rsimp, "defect": rdef, "solutie": rsol, "optimizari": ropt,
+                    "tehnician": rtech, "verificator": rverif, "data": rdata
                 }
-                
                 if st.button(f"Generează PDF Raport #{rid}", key=f"btn_pdf_{rid}"):
                     st.session_state[f"pdf_bytes_{rid}"] = genereaza_pdf(date_pdf)
-                    
                 if f"pdf_bytes_{rid}" in st.session_state:
                     st.download_button(label=f"📥 Descarcă PDF Raport #{rid}", data=st.session_state[f"pdf_bytes_{rid}"], file_name=f"Raport_{rid}.pdf", mime="application/pdf", key=f"dl_{rid}")
     else:
@@ -962,34 +802,31 @@ with tab_rapoarte:
 # ------------------------------------------------------------------------------
 with tab_setari:
     st.subheader("⚙️ Setări Aplicație & Conectare")
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("SELECT nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician FROM setari LIMIT 1")
-    current_setari = c.fetchone()
+    current_setari = get_setari()
     
     with st.form("form_setari"):
-        s_nume = st.text_input("Nume Firma Ta", value=current_setari[0] if current_setari else "Nexus Industrial SRL")
-        s_cui = st.text_input("CUI", value=current_setari[1] if current_setari else "")
-        s_reg = st.text_input("Nr. Reg. Com.", value=current_setari[2] if current_setari else "")
-        s_adresa = st.text_input("Adresă", value=current_setari[3] if current_setari else "")
-        s_banca = st.text_input("Bancă", value=current_setari[4] if current_setari else "")
-        s_iban = st.text_input("IBAN (Cont)", value=current_setari[5] if current_setari else "")
-        s_swep = st.text_input("SWEP (SWIFT)", value=current_setari[6] if current_setari else "")
-        s_srv = st.text_input("SMTP Server", value=current_setari[7] if current_setari else "smtp.gmail.com")
-        s_prt = st.number_input("SMTP Port", value=int(current_setari[8]) if current_setari and current_setari[8] else 587)
-        s_usr = st.text_input("User Gmail", value=current_setari[9] if current_setari else "")
-        s_pwd = st.text_input("App Password", type="password", value=current_setari[10] if current_setari else "")
-        s_sheet = st.text_input("Google Sheet URL", value=current_setari[11] if current_setari else "")
-        s_email_teh = st.text_input("E-mail Tehnician", value=current_setari[12] if current_setari and len(current_setari) > 12 and current_setari[12] else "")
+        s_nume = st.text_input("Nume Firma Ta", value=current_setari[0])
+        s_cui = st.text_input("CUI", value=current_setari[1])
+        s_reg = st.text_input("Nr. Reg. Com.", value=current_setari[2])
+        s_adresa = st.text_input("Adresă", value=current_setari[3])
+        s_banca = st.text_input("Bancă", value=current_setari[4])
+        s_iban = st.text_input("IBAN (Cont)", value=current_setari[5])
+        s_swep = st.text_input("SWEP (SWIFT)", value=current_setari[6])
+        s_srv = st.text_input("SMTP Server", value=current_setari[7])
+        s_prt = st.number_input("SMTP Port", value=int(current_setari[8]) if current_setari[8] else 587)
+        s_usr = st.text_input("User Gmail", value=current_setari[9])
+        s_pwd = st.text_input("App Password", type="password", value=current_setari[10])
+        s_sheet = st.text_input("Google Sheet URL", value=current_setari[11])
+        s_email_teh = st.text_input("E-mail Tehnician", value=current_setari[12] if len(current_setari) > 12 else "")
         
         if st.form_submit_button("💾 Salvează Setările"):
+            conn = get_db_connection()
+            c = conn.cursor()
             c.execute("DELETE FROM setari")
-            c.execute("""
-                INSERT INTO setari (nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (s_nume, s_cui, s_reg, s_adresa, s_banca, s_iban, s_swep, s_srv, s_prt, s_usr, s_pwd, s_sheet, s_email_teh))
+            c.execute("INSERT INTO setari (nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                      (s_nume, s_cui, s_reg, s_adresa, s_banca, s_iban, s_swep, s_srv, s_prt, s_usr, s_pwd, s_sheet, s_email_teh))
             conn.commit()
+            conn.close()
             st.cache_data.clear()
-            st.success("Setările au fost salvate cu succes în Supabase!")
+            st.success("Setările au fost salvate!")
             st.rerun()
-    conn.close()
