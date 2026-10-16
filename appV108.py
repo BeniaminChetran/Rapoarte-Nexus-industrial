@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------------
-# APLICATIE STREAMLIT CMMS ENTERPRISE DASHBOARD & PREDICTIVE v10.4 (SUPABASE)
+# APLICATIE STREAMLIT CMMS ENTERPRISE DASHBOARD & PREDICTIVE v10.4.1 (SUPABASE)
 #-----------------------------------------------------------------------------------
 
 import os
@@ -96,10 +96,11 @@ def get_masini():
 def get_masini_firma(firma_id):
     with db_cursor() as c:
         c.execute("""
-            SELECT id, denumire, subansambluri, erori, tip_masina 
-            FROM masini 
-            WHERE firma_id = %s 
-            ORDER BY denumire
+            SELECT m.id, m.denumire, m.subansambluri, m.erori, m.tip_masina 
+            FROM masini m
+            JOIN firme f ON m.firma_id = f.id
+            WHERE f.id = %s 
+            ORDER BY m.denumire
         """, (firma_id,))
         return c.fetchall()
 
@@ -409,7 +410,7 @@ def background_sync_task(payload_sheet, email_client, subiect, corp_mesaj, pdf_b
 # 6. Interfața Principală Streamlit & Sidebar
 # ------------------------------------------------------------------------------
 st.sidebar.title("📌 Nexus Control Panel")
-st.sidebar.text("CMMS Enterprise Dashboard v10.4")
+st.sidebar.text("CMMS Enterprise Dashboard v10.4.1")
 st.sidebar.markdown("---")
 st.sidebar.info("Conexiune optimizată prin ThreadedConnectionPool & Cache.")
 
@@ -557,7 +558,6 @@ with tab_activitati:
         with c2:
             solutie = st.text_area("Soluție / Lucrări Executate")
             durata_min = st.number_input("Durată Intervenție (minute)", value=60, step=15)
-            # Adăugare tip intervenție cerut: diagnostic, reparatie sau consultanta
             tip_interventie = st.selectbox("Tip Intervenție", ["reparatie", "diagnostic", "consultanta"])
             stare_fin = st.selectbox("Stare Finală Echipament", ["Funcțională", "În testare", "Oprită / Necesar piese"])
             
@@ -603,7 +603,6 @@ with tab_activitati:
                 piese_valide = edited_df.dropna(subset=["Piesa"]).to_dict(orient="records")
                 
                 with db_cursor() as c:
-                    # Asigură-te că tabelul reparatii conține coloana tip_interventie sau o gestionezi. Aici o salvăm în JSON sau adăugăm în coloană direct dacă există.
                     c.execute("""
                         INSERT INTO reparatii (firma, masina, subansamblu, defect, cod_eroare, piese_json, titlu, simptom, solutie, stare_finala, durata, optimizari, tehnician, verificator) 
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -625,7 +624,6 @@ with tab_activitati:
                     }
                     pdf_bytes_gen = genereaza_pdf(date_pdf_pre)
 
-                    # Formatare oră ca ore și minute (ex: "2 ore 30 minute")
                     ore_calc = int(durata_min // 60)
                     minute_calc = int(durata_min % 60)
                     format_durata_text = f"{ore_calc} ore {minute_calc} minute" if ore_calc > 0 else f"{minute_calc} minute"
