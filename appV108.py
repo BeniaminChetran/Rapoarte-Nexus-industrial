@@ -427,7 +427,7 @@ with tab_firme:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 3: Lista Mașini & Subansambluri (Filtrate direct pe baza id-ului firmei alese)
+# TAB 3: Lista Mașini & Subansambluri (Filtrate direct după id-ul firmei selectate în formular)
 # ------------------------------------------------------------------------------
 with tab_masini:
     st.subheader("🏭 Gestiune Mașini și Echipamente")
@@ -477,7 +477,7 @@ with tab_masini:
     st.markdown("---")
     st.subheader("📋 Mașini Înregistrate pentru Firma Selectată")
     
-    # Filtrare efectuată strict pe baza ID-ului firmei obținut din dicționarul de firme (`firma_id`)
+    # Filtrare riguroasă pe baza ID-ului extras din dicționarul firmei alese
     if firme_dict and m_firma != "Nicio firmă":
         firma_id_selectat = firme_dict[m_firma]
         c.execute("""
