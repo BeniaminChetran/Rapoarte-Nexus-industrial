@@ -284,8 +284,6 @@ def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume
     
     if destinatar_client and destinatar_client.strip():
         destinatari.append(destinatar_client.strip())
-    else:
-        pass
     
     if email_tehnician:
         destinatari.append(email_tehnician.strip())
@@ -306,7 +304,7 @@ def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume
                 server.send_message(msg)
                 
                 if not (destinatar_client and destinatar_client.strip()):
-                    return True, f"Clientul nu are o adresa de email iar emailul va fi trimis doar la personalul Nexus"
+                    return True, "clientul nu are o adresa de email iar emailul va fi trimis doar la personalul Nexus"
                 else:
                     return True, f"E-mail trimis cu succes către: {', '.join(destinatari_unice)}"
             else:
@@ -429,7 +427,7 @@ with tab_firme:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 3: Lista Mașini & Subansambluri (Controlate direct de Selectează Firma Proprietară)
+# TAB 3: Lista Mașini & Subansambluri (Filtrate direct pe baza id-ului firmei alese)
 # ------------------------------------------------------------------------------
 with tab_masini:
     st.subheader("🏭 Gestiune Mașini și Echipamente")
@@ -479,13 +477,13 @@ with tab_masini:
     st.markdown("---")
     st.subheader("📋 Mașini Înregistrate pentru Firma Selectată")
     
-    # Lista de mașini este acum filtrată automat direct pe baza firmei alese în sus în formular ("Selectează Firma Proprietară")
+    # Filtrare efectuată strict pe baza ID-ului firmei obținut din dicționarul de firme (`firma_id`)
     if firme_dict and m_firma != "Nicio firmă":
-        fid_selectat = firme_dict[m_firma]
+        firma_id_selectat = firme_dict[m_firma]
         c.execute("""
             SELECT m.id, f.nume_firma, m.denumire, m.tip_masina, m.serie, m.an_fabricatie, m.subansambluri, m.erori, m.defecte, m.remediu, m.piese_necesare, m.piese_inlocuite, m.tipuri_fluide, m.tip_intretinere 
             FROM masini m JOIN firme f ON m.firma_id = f.id WHERE m.firma_id = %s
-        """, (fid_selectat,))
+        """, (firma_id_selectat,))
     else:
         c.execute("""
             SELECT m.id, f.nume_firma, m.denumire, m.tip_masina, m.serie, m.an_fabricatie, m.subansambluri, m.erori, m.defecte, m.remediu, m.piese_necesare, m.piese_inlocuite, m.tipuri_fluide, m.tip_intretinere 
