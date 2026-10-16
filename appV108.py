@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------------
-# APLICATIE STREAMLIT CMMS ENTERPRISE DASHBOARD & PREDICTIVE v10.4.1 (SUPABASE)
+# APLICATIE STREAMLIT CMMS ENTERPRISE DASHBOARD & PREDICTIVE v10.4.2 (SUPABASE)
 #-----------------------------------------------------------------------------------
 
 import os
@@ -410,13 +410,12 @@ def background_sync_task(payload_sheet, email_client, subiect, corp_mesaj, pdf_b
 # 6. Interfața Principală Streamlit & Sidebar
 # ------------------------------------------------------------------------------
 st.sidebar.title("📌 Nexus Control Panel")
-st.sidebar.text("CMMS Enterprise Dashboard v10.4.1")
+st.sidebar.text("CMMS Enterprise Dashboard v10.4.2")
 st.sidebar.markdown("---")
 st.sidebar.info("Conexiune optimizată prin ThreadedConnectionPool & Cache.")
 
 st.title("🛠️ NexInd CMMS Dashboard & Predictive")
 
-# Tab-ul Predicții mutat pe poziția 3 (index 2)
 tab_dashboard, tab_activitati, tab_optimizare, tab_predictii, tab_masini, tab_piese, tab_firme, tab_rapoarte, tab_setari = st.tabs([
     "📈 0. Dashboard",
     "📝 1. Activități", 
