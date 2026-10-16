@@ -1,7 +1,7 @@
 # ------------------------------------------------------------------------------
     # TAB 4: Tabelul de Piese (Filtrare corectă pe masina_montaj)
     # ------------------------------------------------------------------------------
-    with tab_piese:
+        with tab_piese:
         st.subheader("🔧 Gestiune Piese de Schimb")
         conn = get_db_connection()
         c = conn.cursor()
