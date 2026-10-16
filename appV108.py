@@ -6,7 +6,7 @@ import os
 import json
 import smtplib
 import urllib.request
-from datetime import datetime
+from datetime import datetime, date
 from email.message import EmailMessage
 from contextlib import contextmanager
 import streamlit as st
@@ -826,17 +826,56 @@ with tab_piese:
         st.info(f"Nu există piese înregistrate pentru selecția curentă ({select_masina_unica}).")
 
 # ------------------------------------------------------------------------------
-# TAB 6: Istoric & Posibilitate Editare Raport Vechi
+# TAB 6: Istoric, Căutare & Posibilitate Editare Raport Vechi
 # ------------------------------------------------------------------------------
 with tab_rapoarte:
-    st.subheader("📋 Istoric Intervenții (Vizualizare, Generare PDF & Modificare)")
+    st.subheader("📋 Istoric Intervenții & Căutare Avansată")
+    
+    # --- SECȚIUNE DE CĂUTARE / FILTRARE ---
+    with st.expander("🔍 Căutare și Filtrare Rapoarte", expanded=True):
+        firme_list_istoric = get_firme()
+        nume_firme_opt = ["Toate firmele"] + [f['nume_firma'] for f in firme_list_istoric]
+        
+        masini_list_istoric = get_masini()
+        nume_masini_opt = ["Toate mașinile"] + [m['denumire'] for m in masini_list_istoric]
+        
+        fc1, fc2, fc3 = st.columns(3)
+        with fc1:
+            filtru_firma = st.selectbox("Filtrează după Firmă", options=nume_firme_opt, key="filtru_ist_firma")
+        with fc2:
+            filtru_masina = st.selectbox("Filtrează după Mașină", options=nume_masini_opt, key="filtru_ist_masina")
+        with fc3:
+            foloseste_data = st.checkbox("Filtrează după o dată specifică", value=False, key="filtru_ist_check_data")
+            filtru_data = st.date_input("Data intervenție", value=date.today(), key="filtru_ist_data") if foloseste_data else None
+
+    # Construire dinamică a interogării SQL pe baza filtrelor alese
+    query_str = "SELECT * FROM reparatii WHERE 1=1"
+    query_params = []
+
+    if filtru_firma != "Toate firmele":
+        query_str += " AND firma = %s"
+        query_params.append(filtru_firma)
+        
+    if filtru_masina != "Toate mașinile":
+        query_str += " AND masina = %s"
+        query_params.append(filtru_masina)
+        
+    if foloseste_data and filtru_data:
+        query_str += " AND DATE(data_creare) = %s"
+        query_params.append(filtru_data)
+
+    query_str += " ORDER BY id DESC LIMIT 100"
+
     conn_hist = get_db_connection()
     cur_hist = conn_hist.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur_hist.execute("SELECT * FROM reparatii ORDER BY id DESC LIMIT 100")
+    cur_hist.execute(query_str, tuple(query_params))
     reparatii_db = cur_hist.fetchall()
     cur_hist.close()
     conn_hist.close()
     
+    st.markdown(f"**Rezultate găsite:** {len(reparatii_db)} rapoarte")
+    st.markdown("---")
+
     if reparatii_db:
         for full_rep in reparatii_db:
             rid = full_rep['id']
@@ -907,7 +946,7 @@ with tab_rapoarte:
                         st.success(f"Raportul #{rid} a fost șters!")
                         st.rerun()
     else:
-        st.info("Nu există rapoarte înregistrate.")
+        st.info("Nu există rapoarte înregistrate care să corespundă criteriilor de căutare.")
 
 # ------------------------------------------------------------------------------
 # TAB 7: Setări
