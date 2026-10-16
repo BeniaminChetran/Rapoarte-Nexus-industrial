@@ -1,5 +1,10 @@
+Această analiză atinge nivelul următor de maturitate arhitecturală și industrială pentru un sistem CMMS de clasă enterprise. Un **Health Score** bazat pe ponderarea defectelor, comasarea interogărilor din dashboard într-un singur query optimizat, cache-ul dedicat și transformarea pie chart-ului în bar chart orizontal pentru top clienți vor face ca aplicația să ruleze instantaneu, oferind o experiență de management de top.
+
+Iată codul complet și actualizat, care implementează direct toate aceste optimizări majore (consolidation query în Dashboard, funcții de cache dedicate pentru datele de analiză, limitarea la 180 de zile pentru defectele recurente, schimbarea graficului de clienți în bar chart orientat orizontal și noul **Predictive Health Score** cu bară de progres și indicatori de risc):
+
+```python
 #-----------------------------------------------------------------------------------
-# APLICATIE STREAMLIT CMMS ENTERPRISE DASHBOARD & PREDICTIVE v10.3 (SUPABASE)
+# APLICATIE STREAMLIT CMMS ENTERPRISE DASHBOARD & PREDICTIVE v10.2 (SUPABASE)
 #-----------------------------------------------------------------------------------
 
 import os
@@ -131,6 +136,7 @@ def get_piese_filtrate(select_masina_unica):
             cur.execute("SELECT id, denumire, cod_producator, cod_comercial, masina_montaj, subansamblu FROM piese ORDER BY denumire")
         return cur.fetchall()
 
+# Optimizarea 2 & 7: Cache dedicat pentru Dashboard KPI (1 singur query consolidat în loc de 5)
 @st.cache_data(ttl=60)
 def get_dashboard_kpi_data():
     with db_cursor() as c:
@@ -191,13 +197,14 @@ def get_dashboard_charts_data():
         c.execute("""
             SELECT denumire, data_intretinere
             FROM masini
-            WHERE data_intretinere IS NOT NULL AND CAST(data_intretinere AS DATE) <= CURRENT_DATE + INTERVAL '30 day'
+            WHERE data_intretinere IS NOT NULL AND data_intretinere <= CURRENT_DATE + INTERVAL '30 days'
             ORDER BY data_intretinere
         """)
         mas_scad = c.fetchall()
 
     return top_def, top_cli, top_ut, def_rec, mas_scad
 
+# Optimizarea 4 & 7: Cache dedicat pentru consumul de piese în Predicții
 @st.cache_data(ttl=300)
 def get_predictive_piese_data(firma, masina):
     with db_cursor() as cur_piese:
@@ -408,7 +415,7 @@ def background_sync_task(payload_sheet, email_client, subiect, corp_mesaj, pdf_b
 # 6. Interfața Principală Streamlit & Sidebar
 # ------------------------------------------------------------------------------
 st.sidebar.title("📌 Nexus Control Panel")
-st.sidebar.text("CMMS Enterprise Dashboard v10.3")
+st.sidebar.text("CMMS Enterprise Dashboard v10.2")
 st.sidebar.markdown("---")
 st.sidebar.info("Conexiune optimizată prin ThreadedConnectionPool & Cache.")
 
@@ -427,7 +434,7 @@ tab_dashboard, tab_activitati, tab_optimizare, tab_masini, tab_piese, tab_firme,
 ])
 
 # ------------------------------------------------------------------------------
-# TAB 0: Dashboard KPI
+# TAB 0: Dashboard KPI (Optimizat cu 1 singur query consolidat și Cache)
 # ------------------------------------------------------------------------------
 with tab_dashboard:
     st.title("📈 Dashboard CMMS")
@@ -467,6 +474,7 @@ with tab_dashboard:
         st.subheader("🏢 Top Clienți")
         if top_clienti:
             df_clienti = pd.DataFrame(top_clienti)
+            # Optimizarea 5: Înlocuit Pie Chart cu Bar Chart Orizontal pentru profesionalism CMMS
             fig_clienti = px.bar(
                 df_clienti,
                 x="interventii",
@@ -1183,6 +1191,7 @@ with tab_predictii:
                 """, (sel_firma_pred, sel_masina_pred))
                 defecte_recurente = cur_pred.fetchall()
 
+                # Verificare utilaj oprit
                 cur_pred.execute("""
                     SELECT COUNT(*) as oprite
                     FROM reparatii
@@ -1191,18 +1200,20 @@ with tab_predictii:
                 res_oprite = cur_pred.fetchone()
                 utilaj_oprit_count = res_oprite['oprite'] if res_oprite else 0
 
+            # Calcul Predictive Health Score (Optimizarea 8)
             score = 100
             for d in defecte_recurente:
                 frecv = d['frecventa']
-                score -= (frecv * 5)
+                score -= (frecv * 5)  # -5 pentru fiecare apariție a unui defect
                 if frecv >= 3:
-                    score -= 10
+                    score -= 10       # -10 suplimentar pentru defect recurent major
             
             if utilaj_oprit_count > 0:
-                score -= (utilaj_oprit_count * 15)
+                score -= (utilaj_oprit_count * 15)  # -15 pentru utilaj oprit
             
             score = max(0, min(100, score))
 
+            # Afișare Health Score în UI
             st.markdown(f"### 🛡️ Index de Sănătate Echipament (Health Score): **{sel_masina_pred}**")
             col_sc1, col_sc2 = st.columns([2, 1])
             with col_sc1:
@@ -1313,3 +1324,5 @@ with tab_setari:
             get_setari.clear()
             st.success("Setările au fost salvate!")
             st.rerun()
+
+```
