@@ -800,7 +800,7 @@ with tab_rapoarte:
                     em_defect = st.text_area("Defect Constatat", value=rdef or "", key=f"em_def_{rid}")
                     em_solutie = st.text_area("Soluție / Lucrări Executate", value=rsol or "", key=f"em_sol_{rid}")
                     
-                    c_ e1, c_e2 = st.columns(2)
+                    c_e1, c_e2 = st.columns(2)
                     with c_e1:
                         em_durata = st.number_input("Durată (minute)", value=int(rdurata) if rdurata else 60, key=f"em_dur_{rid}")
                         em_stare = st.selectbox("Stare Finală", ["Funcțională", "În testare", "Oprită / Necesar piese"], index=0 if rstare=="Funcțională" else 1, key=f"em_sta_{rid}")
