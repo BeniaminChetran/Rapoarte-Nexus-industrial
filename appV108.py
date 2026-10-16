@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------------
-# APLICATIE STREAMLIT CMMS ENTERPRISE DASHBOARD & PREDICTIVE (SUPABASE / POSTGRESQL)
+# APLICATIE STREAMLIT CMMS ENTERPRISE DASHBOARD & PREDICTIVE v10.1 (SUPABASE)
 #-----------------------------------------------------------------------------------
 
 import os
@@ -17,6 +17,7 @@ import psycopg2
 import psycopg2.extras
 from psycopg2.pool import ThreadedConnectionPool
 import pandas as pd
+import plotly.express as px
 
 load_dotenv()
 
@@ -53,7 +54,7 @@ def db_cursor():
 # 2. Configurare Pagină & Stil UI
 # ------------------------------------------------------------------------------
 st.set_page_config(
-    page_title="NexInd CMMS Enterprise",
+    page_title="NexInd CMMS Enterprise Dashboard",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -331,16 +332,16 @@ def background_sync_task(payload_sheet, email_client, subiect, corp_mesaj, pdf_b
 # 6. Interfața Principală Streamlit & Sidebar
 # ------------------------------------------------------------------------------
 st.sidebar.title("📌 Nexus Control Panel")
-st.sidebar.text("CMMS Enterprise Dashboard v10.0")
+st.sidebar.text("CMMS Enterprise Dashboard v10.1")
 st.sidebar.markdown("---")
 st.sidebar.info("Conexiune optimizată prin ThreadedConnectionPool.")
 
 st.title("🛠️ NexInd CMMS Dashboard & Predictive")
 
 tab_dashboard, tab_activitati, tab_optimizare, tab_masini, tab_piese, tab_firme, tab_rapoarte, tab_predictii, tab_setari = st.tabs([
-    "📈 0. Dashboard KPI",
+    "📈 0. Dashboard",
     "📝 1. Activități", 
-    "📊 2. Documentatii / Proceduri", 
+    "📊 2. Documentații / Proceduri", 
     "🏭 3. Mașini", 
     "🔧 4. Piese", 
     "📇 5. Firme",
@@ -350,67 +351,197 @@ tab_dashboard, tab_activitati, tab_optimizare, tab_masini, tab_piese, tab_firme,
 ])
 
 # ------------------------------------------------------------------------------
-# TAB 0: Dashboard & KPI Management Center
+# TAB 0: Dashboard KPI (Implementat conform specificației complete)
 # ------------------------------------------------------------------------------
 with tab_dashboard:
-    st.subheader("📈 Panou Central Management & Indicatori KPI")
-    st.markdown("Monitorizare în timp real a performanței operaționale, volumului de intervenții și consumului de resurse.")
+    st.title("📈 Dashboard CMMS")
 
-    with db_cursor() as cur_kpi:
-        # Total Intervenții
-        cur_kpi.execute("SELECT COUNT(*) as total, SUM(durata) as total_ore, AVG(durata) as medie_durata FROM reparatii")
-        res_rep = cur_kpi.fetchone()
-        total_interventii = res_rep['total'] if res_rep and res_rep['total'] else 0
-        total_minute = res_rep['total_ore'] if res_rep and res_rep['total_ore'] else 0
-        medie_durata = res_rep['medie_durata'] if res_rep and res_rep['medie_durata'] else 0
-
-        # Total Firme & Mașini
-        cur_kpi.execute("SELECT COUNT(*) as total FROM firme")
-        total_firme = cur_kpi.fetchone()['total']
-
-        cur_kpi.execute("SELECT COUNT(*) as total FROM masini")
-        total_masini = cur_kpi.fetchone()['total']
-
-        # Top 5 Defecte Recurente la nivel general
-        cur_kpi.execute("""
-            SELECT masina, defect, COUNT(*) as frecventa
+    # =========================================================
+    # KPI PRINCIPALI
+    # =========================================================
+    with db_cursor() as c:
+        c.execute("""
+            SELECT COUNT(*) AS total
             FROM reparatii
-            WHERE defect IS NOT NULL AND defect != ''
-            GROUP BY masina, defect
-            ORDER BY frecventa DESC
-            LIMIT 5
+            WHERE DATE_TRUNC('month', data_creare) = DATE_TRUNC('month', CURRENT_DATE)
         """)
-        top_defecte = cur_kpi.fetchall()
+        interventii_luna = c.fetchone()["total"]
 
-    # Afișare metrici KPI principali (Metric Cards)
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric(label="📊 Total Intervenții", value=total_interventii)
-    with col2:
-        st.metric(label="⏱️ Timp Total Lucrat", value=f"{round(total_minute / 60, 1)} ore")
-    with col3:
-        st.metric(label="🏢 Clienți Activi", value=total_firme)
-    with col4:
-        st.metric(label="🏭 Echipamente", value=total_masini)
+        c.execute("""
+            SELECT COALESCE(SUM(durata),0) AS minute
+            FROM reparatii
+            WHERE DATE_TRUNC('month', data_creare) = DATE_TRUNC('month', CURRENT_DATE)
+        """)
+        ore_lucrate = round(c.fetchone()["minute"] / 60, 1)
+
+        c.execute("""
+            SELECT COUNT(DISTINCT firma) AS total
+            FROM reparatii
+            WHERE DATE_TRUNC('month', data_creare) = DATE_TRUNC('month', CURRENT_DATE)
+        """)
+        clienti_activi = c.fetchone()["total"]
+
+        c.execute("""
+            SELECT COUNT(DISTINCT masina) AS total
+            FROM reparatii
+            WHERE DATE_TRUNC('month', data_creare) = DATE_TRUNC('month', CURRENT_DATE)
+        """)
+        utilaje_active = c.fetchone()["total"]
+
+        # Indicator suplimentar recomandat pentru directorul de mentenanță
+        c.execute("""
+            SELECT COUNT(*) AS total
+            FROM reparatii
+            WHERE stare_finala = 'Oprită / Necesar piese'
+        """)
+        utilaje_oprite = c.fetchone()["total"]
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("🔧 Intervenții luna curentă", interventii_luna)
+    c2.metric("⏱ Ore lucrate", ore_lucrate)
+    c3.metric("🏢 Clienți activi", clienti_activi)
+    c4.metric("⚙️ Utilaje active", utilaje_active)
+    c5.metric("🚨 Utilaje Oprite", utilaje_oprite)
 
     st.markdown("---")
-    
-    c_kpi1, c_kpi2 = st.columns(2)
-    with c_kpi1:
-        st.markdown("##### 🚨 Top Defecte Recurente la Nivel de Fabrică")
-        if top_defecte:
-            df_def = pd.DataFrame(top_defecte)
-            st.dataframe(df_def, use_container_width=True)
-        else:
-            st.info("Nu există suficiente date înregistrate pentru topul defectelor.")
 
-    with c_kpi2:
-        st.markdown("##### ⚙️ Informații Utile de Mentenanță")
-        st.info(
-            f"- **Durata Medie per Intervenție:** {round(medie_durata, 1)} minute\n"
-            f"- **Eficiență Pool DB:** ThreadedConnectionPool activ (max 20 conexiuni simultane)\n"
-            f"- **Sincronizare:** Background Threads active pentru Google Sheets & SMTP"
+    # =========================================================
+    # TOP DEFECTE
+    # =========================================================
+    with db_cursor() as c:
+        c.execute("""
+            SELECT
+                defect,
+                COUNT(*) AS aparitii
+            FROM reparatii
+            WHERE defect IS NOT NULL
+              AND defect <> ''
+            GROUP BY defect
+            ORDER BY aparitii DESC
+            LIMIT 10
+        """)
+        top_defecte = c.fetchall()
+
+    if top_defecte:
+        df_defecte = pd.DataFrame(top_defecte)
+        fig_defecte = px.bar(
+            df_defecte,
+            x="aparitii",
+            y="defect",
+            orientation="h",
+            title="Top 10 Defecte"
         )
+        st.plotly_chart(fig_defecte, use_container_width=True)
+
+    # =========================================================
+    # TOP CLIENȚI + TOP UTILAJE
+    # =========================================================
+    col1, col2 = st.columns(2)
+
+    with db_cursor() as c:
+        c.execute("""
+            SELECT
+                firma,
+                COUNT(*) AS interventii
+            FROM reparatii
+            GROUP BY firma
+            ORDER BY interventii DESC
+            LIMIT 10
+        """)
+        top_clienti = c.fetchall()
+
+        c.execute("""
+            SELECT
+                masina,
+                COUNT(*) AS interventii
+            FROM reparatii
+            GROUP BY masina
+            ORDER BY interventii DESC
+            LIMIT 10
+        """)
+        top_utilaje = c.fetchall()
+
+    with col1:
+        st.subheader("🏢 Top Clienți")
+        if top_clienti:
+            df_clienti = pd.DataFrame(top_clienti)
+            fig_clienti = px.pie(
+                df_clienti,
+                names="firma",
+                values="interventii"
+            )
+            st.plotly_chart(fig_clienti, use_container_width=True)
+
+    with col2:
+        st.subheader("⚙️ Top Utilaje")
+        if top_utilaje:
+            df_utilaje = pd.DataFrame(top_utilaje)
+            fig_utilaje = px.bar(
+                df_utilaje,
+                x="masina",
+                y="interventii"
+            )
+            st.plotly_chart(fig_utilaje, use_container_width=True)
+
+    st.markdown("---")
+
+    # =========================================================
+    # DEFECTE RECURENTE
+    # =========================================================
+    st.subheader("⚠️ Defecte Recurente")
+
+    with db_cursor() as c:
+        c.execute("""
+            SELECT
+                masina,
+                defect,
+                COUNT(*) AS repetitii
+            FROM reparatii
+            WHERE defect IS NOT NULL
+              AND defect <> ''
+            GROUP BY masina, defect
+            HAVING COUNT(*) >= 3
+            ORDER BY repetitii DESC
+            LIMIT 20
+        """)
+        defecte_recurente = c.fetchall()
+
+    if defecte_recurente:
+        for d in defecte_recurente:
+            st.warning(
+                f"""
+⚠️ **{d['masina']}**
+Defect: {d['defect']}
+Număr apariții: {d['repetitii']}
+"""
+            )
+    else:
+        st.success("Nu există defecte recurente identificate.")
+
+    st.markdown("---")
+
+    # =========================================================
+    # REVIZII SCADENTE
+    # =========================================================
+    st.subheader("📅 Întrețineri Scadente")
+
+    with db_cursor() as c:
+        c.execute("""
+            SELECT
+                denumire,
+                data_intretinere
+            FROM masini
+            WHERE data_intretinere IS NOT NULL
+              AND data_intretinere <= CURRENT_DATE + INTERVAL '30 days'
+            ORDER BY data_intretinere
+        """)
+        masini_scadente = c.fetchall()
+
+    if masini_scadente:
+        df_scadente = pd.DataFrame(masini_scadente)
+        st.dataframe(df_scadente, use_container_width=True)
+    else:
+        st.success("Nu există întrețineri programate în următoarele 30 de zile.")
 
 # ------------------------------------------------------------------------------
 # TAB 5: Nomenclator Firme
@@ -728,7 +859,7 @@ with tab_activitati:
 # TAB 2: Documentatii / Proceduri de reparații
 # ------------------------------------------------------------------------------
 with tab_optimizare:
-    st.subheader("📊 Documentatii / Proceduri de reparații")
+    st.subheader("📊 Documentații / Proceduri de reparații")
     masini_existente = [m['denumire'] for m in get_masini()]
     
     if not masini_existente:
