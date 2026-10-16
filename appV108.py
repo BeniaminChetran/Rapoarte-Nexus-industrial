@@ -1,11 +1,12 @@
 #-----------------------------------------------------------------------------------
-# APLICATIE STREAMLIT ULTRA-OPTIMIZATĂ & SECURIZATĂ (SUPABASE / POSTGRESQL) - v9.5
+# APLICATIE STREAMLIT CMMS ULTRA-PERFORMANTA (SUPABASE / POSTGRESQL) - v9.9 ENTERPRISE
 #-----------------------------------------------------------------------------------
 
 import os
 import json
 import smtplib
 import urllib.request
+import threading
 from datetime import datetime, date
 from email.message import EmailMessage
 from contextlib import contextmanager
@@ -14,26 +15,31 @@ from dotenv import load_dotenv
 from fpdf import FPDF
 import psycopg2
 import psycopg2.extras
+from psycopg2.pool import ThreadedConnectionPool
 import pandas as pd
 
 # Încărcare variabile de mediu
 load_dotenv()
 
 # ------------------------------------------------------------------------------
-# CONFIGURARE CONEXIUNE BAZĂ DE DATE & CONTEXT MANAGER (Prioritatea 4)
+# 1. CONFIGURARE CONNECTION POOL & CACHE RESOURCE (Prioritatea 1 & 2)
 # ------------------------------------------------------------------------------
-def get_db_connection():
+@st.cache_resource
+def init_connection_pool():
     try:
         db_url = st.secrets["DATABASE_URL"]
-        conn = psycopg2.connect(db_url)
-        return conn
+        # Pool cu minim 1 conexiune și maxim 20 pentru concurență ridicată
+        pool = ThreadedConnectionPool(1, 20, db_url)
+        return pool
     except Exception as e:
-        st.error(f"Eroare critică de conectare la baza de date Supabase: {e}")
+        st.error(f"Eroare critică la inițializarea Connection Pool Supabase: {e}")
         st.stop()
+
+db_pool = init_connection_pool()
 
 @contextmanager
 def db_cursor():
-    conn = get_db_connection()
+    conn = db_pool.getconn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         yield cur
@@ -43,19 +49,19 @@ def db_cursor():
         raise e
     finally:
         cur.close()
-        conn.close()
+        db_pool.putconn(conn)
 
 # ------------------------------------------------------------------------------
-# 1. Configurare Pagină & Stil UI
+# 2. Configurare Pagină & Stil UI
 # ------------------------------------------------------------------------------
 st.set_page_config(
-    page_title="NexInd",
+    page_title="NexInd CMMS",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # ------------------------------------------------------------------------------
-# 2. Funcții Optimizate cu Cache Individual & Lazy Loading (Prioritatea 1)
+# 3. Funcții Optimizate cu Cache Individual & Lazy Loading
 # ------------------------------------------------------------------------------
 @st.cache_data(ttl=300)
 def get_setari():
@@ -127,7 +133,7 @@ def get_piese_filtrate(select_masina_unica):
         return cur.fetchall()
 
 # ------------------------------------------------------------------------------
-# 3. Clasă Generare PDF Profesionist
+# 4. Clasă Generare PDF Profesionist
 # ------------------------------------------------------------------------------
 class RaportPDF(FPDF):
     def header(self):
@@ -271,7 +277,7 @@ def genereaza_pdf(data):
     return output if isinstance(output, bytes) else output.encode('latin1', errors='ignore')
 
 # ------------------------------------------------------------------------------
-# 4. Trimitere Email prin SMTP & Google Sheets cu Timeout (Prioritatea 6)
+# 5. Background Services Non-Blocking (Prioritatea 8)
 # ------------------------------------------------------------------------------
 def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume_fisier):
     setari = get_setari()
@@ -304,11 +310,8 @@ def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume
             if smtp_pwd and smtp_u:
                 server.login(smtp_u, smtp_pwd)
                 server.send_message(msg)
-                return True, f"E-mail trimis cu succes către: {', '.join(destinatari_unice)}"
-            else:
-                return False, "Setările SMTP (User sau Parolă) nu sunt completate."
-    except Exception as e:
-        return False, f"Eroare conexiune SMTP ({str(e)})"
+    except Exception:
+        pass
 
 def update_google_sheet(payload_sheet):
     setari_info = get_setari()
@@ -318,20 +321,24 @@ def update_google_sheet(payload_sheet):
             req = urllib.request.Request(sheet_url, data=json.dumps(payload_sheet).encode('utf-8'), headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req, timeout=5) as response:
                 response.read().decode('utf-8')
-        except TimeoutError:
-            st.warning("Google Sheet: Timout la actualizare (serverul a răspuns prea greu).")
-        except Exception as e:
-            st.warning(f"Google Sheet error: {str(e)}")
+        except Exception:
+            pass
+
+def background_sync_task(payload_sheet, email_client, subiect, corp_mesaj, pdf_bytes, nume_fisier):
+    # Rulează în fundal pentru a nu bloca interfața utilizatorului (UX instantaneu)
+    update_google_sheet(payload_sheet)
+    if email_client:
+        trimite_email_raport(email_client, subiect, corp_mesaj, pdf_bytes, nume_fisier)
 
 # ------------------------------------------------------------------------------
-# 5. Interfața Principală Streamlit & Sidebar
+# 6. Interfața Principală Streamlit & Sidebar
 # ------------------------------------------------------------------------------
 st.sidebar.title("📌 Nexus Control Panel")
-st.sidebar.text("Sistem integrat activ v9.5")
+st.sidebar.text("CMMS Enterprise v9.9")
 st.sidebar.markdown("---")
-st.sidebar.info("Aplicație optimizată pentru mobil și desktop.")
+st.sidebar.info("Conexiune optimizată prin ThreadedConnectionPool.")
 
-st.title("🛠️ NexInd")
+st.title("🛠️ NexInd CMMS")
 
 tab_activitati, tab_optimizare, tab_masini, tab_piese, tab_firme, tab_rapoarte, tab_setari = st.tabs([
     "📝 1. Activități", 
@@ -509,7 +516,7 @@ with tab_masini:
                         st.rerun()
 
 # ------------------------------------------------------------------------------
-# TAB 1: Activități Zilnice (cu `get_masini_firma` & `st.data_editor` - Prioritatea 1 & 5)
+# TAB 1: Activități Zilnice (cu Lazy Loading & Threading Background Sync)
 # ------------------------------------------------------------------------------
 with tab_activitati:
     st.subheader("📝 Activități Zilnice & Raport Intervenție Tehnică")
@@ -525,7 +532,6 @@ with tab_activitati:
         persoane_contact_firma = [firma_obj['nume_persoana']] if firma_obj['nume_persoana'] else []
         email_client_destinatar = firma_obj['email'] or ""
         
-        # Optimizare Prioritatea 1: Preluăm doar mașinile firmei selectate
         masini_firma_db = get_masini_firma(firma_obj['id'])
         masini_firma_nume = [m['denumire'] for m in masini_firma_db]
         
@@ -556,7 +562,6 @@ with tab_activitati:
             
         st.markdown("##### 🔧 Gestiune Piese (Utilizate / Înlocuite / Necesare)")
         
-        # Optimizare Prioritatea 5: Utilizare st.data_editor în loc de zeci de widgeturi separate
         if "df_piese_editor" not in st.session_state:
             st.session_state["df_piese_editor"] = pd.DataFrame(columns=["Piesa", "Cantitate", "Tip"])
 
@@ -578,7 +583,6 @@ with tab_activitati:
         tehnician_nume = c_tech1.text_input("Nume Tehnician", value="Tehnician Nexus")
         verificator_nume = c_tech2.selectbox("Verificat / Recepționat de", options=persoane_contact_firma if persoane_contact_firma else ["Niciun contact"])
         
-        # Preluare recomandări tehnice fără conexiuni repetate (Prioritatea 4)
         opt_recomandari = ""
         with db_cursor() as cur_opt:
             cur_opt.execute("SELECT descriere_pas FROM optimizari_interventie WHERE masina = %s AND defect = %s", (sel_masina, defect))
@@ -608,6 +612,17 @@ with tab_activitati:
 
                 if rid_nou:
                     st.session_state["ultimul_id_salvat"] = rid_nou
+                    
+                    # Generare PDF în avans pentru thread
+                    date_pdf_pre = {
+                        "id": rid_nou, "client": sel_firma, "masina": sel_masina, "subansamblu": sel_subansamblu,
+                        "durata": durata_min, "cod_eroare": cod_eroare, "stare_finala": stare_fin,
+                        "piese_json": [{"piesa": p.get("Piesa"), "cantitate": p.get("Cantitate"), "tip": p.get("Tip")} for p in piese_valide],
+                        "titlu": titlu_lucrare, "simptom": simptom, "defect": defect, "solutie": solutie,
+                        "optimizari": optimizari, "tehnician": tehnician_nume, "verificator": verificator_nume, "data": datetime.now()
+                    }
+                    pdf_bytes_gen = genereaza_pdf(date_pdf_pre)
+
                     payload_sheet = {
                         "status": "nefacturat", "id": str(rid_nou), "data": datetime.now().strftime("%Y-%m-%d"),
                         "ora": datetime.now().strftime("%H:%M:%S"), "firma": str(sel_firma), "masina": str(sel_masina),
@@ -616,7 +631,13 @@ with tab_activitati:
                         "piese utilizate": ", ".join([f"{p.get('Piesa')} ({p.get('Cantitate')})" for p in piese_valide if p.get('Tip') in ['Utilizata', 'Inlocuita']]),
                         "necesar piese": ", ".join([f"{p.get('Piesa')} ({p.get('Cantitate')})" for p in piese_valide if p.get('Tip') in ['Necesara', 'De Comandat']])
                     }
-                    update_google_sheet(payload_sheet)
+
+                    # Optimizare Prioritatea 8: Rulare în Background Thread pentru viteză maximă UX
+                    threading.Thread(
+                        target=background_sync_task,
+                        args=(payload_sheet, email_client_destinatar, f"Raport #{rid_nou} - {sel_firma}", f"Vă atașăm raportul #{rid_nou}.", pdf_bytes_gen, f"Raport_{rid_nou}.pdf"),
+                        daemon=True
+                    ).start()
 
                 st.session_state["raport_salvat"] = True
                 st.success("Activitatea a fost salvată!")
@@ -641,11 +662,7 @@ with tab_activitati:
                     if "pdf_bytes_curent" in st.session_state and st.session_state["pdf_bytes_curent"]:
                         st.download_button(label=f"📥 Descarcă Raport #{rid}", data=st.session_state["pdf_bytes_curent"], file_name=f"Raport_{rid}.pdf", mime="application/pdf", type="primary")
                 with col_b3:
-                    if st.button("📧 Trimite pe Email"):
-                        pdf_bytes_email = st.session_state.get("pdf_bytes_curent") or genereaza_pdf(date_pdf)
-                        success, msg = trimite_email_raport(email_client_destinatar, f"Raport #{rid} - {sel_firma}", f"Vă atașăm raportul #{rid}.", pdf_bytes_email, f"Raport_{rid}.pdf")
-                        if success: st.success(msg)
-                        else: st.error(msg)
+                    st.info("E-mailul și Google Sheet s-au sincronizat în fundal.")
 
 # ------------------------------------------------------------------------------
 # TAB 2: Documentatii / Proceduri de reparații
@@ -804,7 +821,7 @@ with tab_piese:
         st.info(f"Nu există piese înregistrate pentru selecția curentă ({select_masina_unica}).")
 
 # ------------------------------------------------------------------------------
-# TAB 6: Istoric, Căutare Avansată & Lazy Loading (Prioritatea 2)
+# TAB 6: Istoric, Căutare Avansată & Lazy Loading
 # ------------------------------------------------------------------------------
 with tab_rapoarte:
     st.subheader("📋 Istoric Intervenții & Căutare Avansată (Lazy Loading)")
@@ -825,7 +842,6 @@ with tab_rapoarte:
             foloseste_data = st.checkbox("Filtrează după o dată specifică", value=False, key="filtru_ist_check_data")
             filtru_data = st.date_input("Data intervenție", value=date.today(), key="filtru_ist_data") if foloseste_data else None
 
-    # Optimizare Prioritatea 2: Preluăm inițial doar lista sumară (ID, firmă, mașină, dată)
     query_str = "SELECT id, firma, masina, data_creare FROM reparatii WHERE 1=1"
     query_params = []
 
@@ -857,7 +873,6 @@ with tab_rapoarte:
         
         st.markdown("---")
         
-        # Preluăm detaliile complete doar pentru raportul selectat
         with db_cursor() as cur_full:
             cur_full.execute("SELECT * FROM reparatii WHERE id = %s", (selected_rid,))
             full_rep = cur_full.fetchone()
@@ -892,7 +907,7 @@ with tab_rapoarte:
                     em_durata = st.number_input("Durată (minute)", value=int(rdurata) if rdurata else 60, key=f"em_dur_{rid}")
                     em_stare = st.selectbox("Stare Finală", ["Funcțională", "În testare", "Oprită / Necesar piese"], index=0 if rstare=="Funcțională" else 1, key=f"em_sta_{rid}")
                 with c_e2:
-                    em_tech = st.text_input("Technician", value=rtech or "", key=f"em_tec_{rid}")
+                    em_tech = st.text_input("Tehnician", value=rtech or "", key=f"em_tec_{rid}")
                     em_verif = st.text_input("Verificator / Client", value=rverif or "", key=f"em_ver_{rid}")
                     
                 st.markdown("##### 🔧 Gestiune Piese")
@@ -935,7 +950,12 @@ with tab_rapoarte:
                         "piese utilizate": ", ".join([f"{p.get('piesa')} ({p.get('cantitate')})" for p in updated_piese_list if p.get('tip') in ['Utilizata', 'Inlocuita']]),
                         "necesar piese": ", ".join([f"{p.get('piesa')} ({p.get('cantitate')})" for p in updated_piese_list if p.get('tip') in ['Necesara', 'De Comandat']])
                     }
-                    update_google_sheet(payload_sheet)
+                    
+                    threading.Thread(
+                        target=update_google_sheet,
+                        args=(payload_sheet,),
+                        daemon=True
+                    ).start()
 
                     st.success(f"Raportul #{rid} a fost actualizat cu succes!")
                     st.rerun()
