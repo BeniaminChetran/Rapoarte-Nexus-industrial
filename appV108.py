@@ -738,7 +738,7 @@ with tab_optimizare:
         defecte_existente = [row[0] for row in c.fetchall() if row[0]]
         sel_opt_defect = st.selectbox("Selectează Defectul / Procedura", options=defecte_existente + ["+ Defect nou"])
         
-        def_final = st.text_area("Descriere Defect Nou") if sel_opt_defect == "+ Defect nou" else sel_opt_defect
+        def_final = st.text_input("Descriere Defect Nou") if sel_opt_defect == "+ Defect nou" else sel_opt_defect
             
         if sel_opt_defect != "+ Defect nou" and sel_opt_defect:
             st.markdown(f"##### 🔎 Editare Pași de Reparație Existenti:")
@@ -798,7 +798,7 @@ with tab_optimizare:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 4: Tabelul de Piese (Filtrare directă bazată pe selecția mașinii de sus)
+# TAB 4: Tabelul de Piese (Filtrare directă din Mașinile pe care se montează)
 # ------------------------------------------------------------------------------
 with tab_piese:
     st.subheader("🔧 Gestiune Piese de Schimb")
@@ -807,9 +807,9 @@ with tab_piese:
     masini_rows = get_masini()
     masini_existente = [row[2] for row in masini_rows]
     
-    # Un singur combobox principal de sus care controlează filtrarea pieselor
+    # Un singur combobox principal sus, care filtrează direct piesele după mașina selectată
     filtru_piese_masina = st.selectbox(
-        "Filtrează piesele montate pe mașina", 
+        "Mașinile pe care se montează", 
         options=["Toate mașinile / General"] + masini_existente, 
         key="select_masina_principal_piese"
     )
@@ -843,11 +843,11 @@ with tab_piese:
     st.markdown("---")
     st.subheader("📋 Piese Înregistrate (Modificare & Ștergere)")
     
-    # Afișarea listei filtrate în funcție de selecția principală de sus
+    # Interogare adaptată pentru filtrare exactă pe mașina selectată sau General
     if filtru_piese_masina != "Toate mașinile / General":
         c.execute("""
             SELECT * FROM piese 
-            WHERE masina_montaj ILIKE %s OR masina_montaj = 'General'
+            WHERE masina_montaj ILIKE %s OR masina_montaj = 'General' OR masina_montaj = ''
             ORDER BY denumire
         """, (f"%{filtru_piese_masina}%",))
     else:
