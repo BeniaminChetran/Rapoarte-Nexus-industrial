@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------------
-# APLICATIE STREAMLIT CMMS ENTERPRISE DASHBOARD & PREDICTIVE v10.1 (SUPABASE)
+# APLICATIE STREAMLIT CMMS ENTERPRISE DASHBOARD & PREDICTIVE v10.3 (SUPABASE)
 #-----------------------------------------------------------------------------------
 
 import os
@@ -60,7 +60,7 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------------------------
-# 3. Funcții Optimizate cu Cache Individual & Lazy Loading
+# 3. Funcții Optimizate cu Cache Individual, Lazy Loading & KPI Consolidate
 # ------------------------------------------------------------------------------
 @st.cache_data(ttl=300)
 def get_setari():
@@ -114,7 +114,7 @@ def get_piese_filtrate(select_masina_unica):
     with db_cursor() as cur:
         if select_masina_unica != "Toate mașinile / General":
             cur.execute("""
-                SELECT * FROM piese 
+                SELECT id, denumire, cod_producator, cod_comercial, masina_montaj, subansamblu FROM piese 
                 WHERE LOWER(TRIM(masina_montaj)) LIKE LOWER(%s)
                    OR LOWER(masina_montaj) LIKE LOWER(%s)
                    OR LOWER(masina_montaj) LIKE LOWER(%s)
@@ -128,8 +128,84 @@ def get_piese_filtrate(select_masina_unica):
                 f"%, {select_masina_unica.strip()}%"
             ))
         else:
-            cur.execute("SELECT * FROM piese ORDER BY denumire")
+            cur.execute("SELECT id, denumire, cod_producator, cod_comercial, masina_montaj, subansamblu FROM piese ORDER BY denumire")
         return cur.fetchall()
+
+@st.cache_data(ttl=60)
+def get_dashboard_kpi_data():
+    with db_cursor() as c:
+        c.execute("""
+            SELECT
+                COUNT(*) AS interventii,
+                COALESCE(SUM(durata),0) AS minute,
+                COUNT(DISTINCT firma) AS clienti,
+                COUNT(DISTINCT masina) AS utilaje,
+                COUNT(*) FILTER (WHERE stare_finala='Oprită / Necesar piese') AS utilaje_oprite
+            FROM reparatii
+            WHERE DATE_TRUNC('month', data_creare) = DATE_TRUNC('month', CURRENT_DATE)
+        """)
+        return c.fetchone()
+
+@st.cache_data(ttl=300)
+def get_dashboard_charts_data():
+    with db_cursor() as c:
+        c.execute("""
+            SELECT defect, COUNT(*) AS aparitii
+            FROM reparatii
+            WHERE defect IS NOT NULL AND defect <> ''
+            GROUP BY defect
+            ORDER BY aparitii DESC
+            LIMIT 10
+        """)
+        top_def = c.fetchall()
+
+        c.execute("""
+            SELECT firma, COUNT(*) AS interventii
+            FROM reparatii
+            GROUP BY firma
+            ORDER BY interventii DESC
+            LIMIT 10
+        """)
+        top_cli = c.fetchall()
+
+        c.execute("""
+            SELECT masina, COUNT(*) AS interventii
+            FROM reparatii
+            GROUP BY masina
+            ORDER BY interventii DESC
+            LIMIT 10
+        """)
+        top_ut = c.fetchall()
+
+        c.execute("""
+            SELECT masina, defect, COUNT(*) AS repetitii
+            FROM reparatii
+            WHERE defect IS NOT NULL AND defect <> '' AND data_creare > CURRENT_DATE - INTERVAL '180 day'
+            GROUP BY masina, defect
+            HAVING COUNT(*) >= 3
+            ORDER BY repetitii DESC
+            LIMIT 20
+        """)
+        def_rec = c.fetchall()
+
+        c.execute("""
+            SELECT denumire, data_intretinere
+            FROM masini
+            WHERE data_intretinere IS NOT NULL AND CAST(data_intretinere AS DATE) <= CURRENT_DATE + INTERVAL '30 day'
+            ORDER BY data_intretinere
+        """)
+        mas_scad = c.fetchall()
+
+    return top_def, top_cli, top_ut, def_rec, mas_scad
+
+@st.cache_data(ttl=300)
+def get_predictive_piese_data(firma, masina):
+    with db_cursor() as cur_piese:
+        cur_piese.execute("""
+            SELECT piese_json FROM reparatii
+            WHERE firma = %s AND masina = %s AND piese_json IS NOT NULL
+        """, (firma, masina))
+        return cur_piese.fetchall()
 
 # ------------------------------------------------------------------------------
 # 4. Clasă Generare PDF Profesionist
@@ -332,9 +408,9 @@ def background_sync_task(payload_sheet, email_client, subiect, corp_mesaj, pdf_b
 # 6. Interfața Principală Streamlit & Sidebar
 # ------------------------------------------------------------------------------
 st.sidebar.title("📌 Nexus Control Panel")
-st.sidebar.text("CMMS Enterprise Dashboard v10.1")
+st.sidebar.text("CMMS Enterprise Dashboard v10.3")
 st.sidebar.markdown("---")
-st.sidebar.info("Conexiune optimizată prin ThreadedConnectionPool.")
+st.sidebar.info("Conexiune optimizată prin ThreadedConnectionPool & Cache.")
 
 st.title("🛠️ NexInd CMMS Dashboard & Predictive")
 
@@ -351,50 +427,17 @@ tab_dashboard, tab_activitati, tab_optimizare, tab_masini, tab_piese, tab_firme,
 ])
 
 # ------------------------------------------------------------------------------
-# TAB 0: Dashboard KPI (Implementat conform specificației complete)
+# TAB 0: Dashboard KPI
 # ------------------------------------------------------------------------------
 with tab_dashboard:
     st.title("📈 Dashboard CMMS")
 
-    # =========================================================
-    # KPI PRINCIPALI
-    # =========================================================
-    with db_cursor() as c:
-        c.execute("""
-            SELECT COUNT(*) AS total
-            FROM reparatii
-            WHERE DATE_TRUNC('month', data_creare) = DATE_TRUNC('month', CURRENT_DATE)
-        """)
-        interventii_luna = c.fetchone()["total"]
-
-        c.execute("""
-            SELECT COALESCE(SUM(durata),0) AS minute
-            FROM reparatii
-            WHERE DATE_TRUNC('month', data_creare) = DATE_TRUNC('month', CURRENT_DATE)
-        """)
-        ore_lucrate = round(c.fetchone()["minute"] / 60, 1)
-
-        c.execute("""
-            SELECT COUNT(DISTINCT firma) AS total
-            FROM reparatii
-            WHERE DATE_TRUNC('month', data_creare) = DATE_TRUNC('month', CURRENT_DATE)
-        """)
-        clienti_activi = c.fetchone()["total"]
-
-        c.execute("""
-            SELECT COUNT(DISTINCT masina) AS total
-            FROM reparatii
-            WHERE DATE_TRUNC('month', data_creare) = DATE_TRUNC('month', CURRENT_DATE)
-        """)
-        utilaje_active = c.fetchone()["total"]
-
-        # Indicator suplimentar recomandat pentru directorul de mentenanță
-        c.execute("""
-            SELECT COUNT(*) AS total
-            FROM reparatii
-            WHERE stare_finala = 'Oprită / Necesar piese'
-        """)
-        utilaje_oprite = c.fetchone()["total"]
+    kpi_res = get_dashboard_kpi_data()
+    interventii_luna = kpi_res["interventii"] if kpi_res else 0
+    ore_lucrate = round(kpi_res["minute"] / 60, 1) if kpi_res else 0
+    clienti_activi = kpi_res["clienti"] if kpi_res else 0
+    utilaje_active = kpi_res["utilaje"] if kpi_res else 0
+    utilaje_oprite = kpi_res["utilaje_oprite"] if kpi_res else 0
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("🔧 Intervenții luna curentă", interventii_luna)
@@ -405,22 +448,7 @@ with tab_dashboard:
 
     st.markdown("---")
 
-    # =========================================================
-    # TOP DEFECTE
-    # =========================================================
-    with db_cursor() as c:
-        c.execute("""
-            SELECT
-                defect,
-                COUNT(*) AS aparitii
-            FROM reparatii
-            WHERE defect IS NOT NULL
-              AND defect <> ''
-            GROUP BY defect
-            ORDER BY aparitii DESC
-            LIMIT 10
-        """)
-        top_defecte = c.fetchall()
+    top_defecte, top_clienti, top_utilaje, defecte_recurente, masini_scadente = get_dashboard_charts_data()
 
     if top_defecte:
         df_defecte = pd.DataFrame(top_defecte)
@@ -433,42 +461,18 @@ with tab_dashboard:
         )
         st.plotly_chart(fig_defecte, use_container_width=True)
 
-    # =========================================================
-    # TOP CLIENȚI + TOP UTILAJE
-    # =========================================================
     col1, col2 = st.columns(2)
-
-    with db_cursor() as c:
-        c.execute("""
-            SELECT
-                firma,
-                COUNT(*) AS interventii
-            FROM reparatii
-            GROUP BY firma
-            ORDER BY interventii DESC
-            LIMIT 10
-        """)
-        top_clienti = c.fetchall()
-
-        c.execute("""
-            SELECT
-                masina,
-                COUNT(*) AS interventii
-            FROM reparatii
-            GROUP BY masina
-            ORDER BY interventii DESC
-            LIMIT 10
-        """)
-        top_utilaje = c.fetchall()
 
     with col1:
         st.subheader("🏢 Top Clienți")
         if top_clienti:
             df_clienti = pd.DataFrame(top_clienti)
-            fig_clienti = px.pie(
+            fig_clienti = px.bar(
                 df_clienti,
-                names="firma",
-                values="interventii"
+                x="interventii",
+                y="firma",
+                orientation="h",
+                title="Top Clienți după număr intervenții"
             )
             st.plotly_chart(fig_clienti, use_container_width=True)
 
@@ -479,33 +483,14 @@ with tab_dashboard:
             fig_utilaje = px.bar(
                 df_utilaje,
                 x="masina",
-                y="interventii"
+                y="interventii",
+                title="Top Utilaje după număr intervenții"
             )
             st.plotly_chart(fig_utilaje, use_container_width=True)
 
     st.markdown("---")
 
-    # =========================================================
-    # DEFECTE RECURENTE
-    # =========================================================
-    st.subheader("⚠️ Defecte Recurente")
-
-    with db_cursor() as c:
-        c.execute("""
-            SELECT
-                masina,
-                defect,
-                COUNT(*) AS repetitii
-            FROM reparatii
-            WHERE defect IS NOT NULL
-              AND defect <> ''
-            GROUP BY masina, defect
-            HAVING COUNT(*) >= 3
-            ORDER BY repetitii DESC
-            LIMIT 20
-        """)
-        defecte_recurente = c.fetchall()
-
+    st.subheader("⚠️ Defecte Recurente (Ultimele 180 zile)")
     if defecte_recurente:
         for d in defecte_recurente:
             st.warning(
@@ -516,27 +501,11 @@ Număr apariții: {d['repetitii']}
 """
             )
     else:
-        st.success("Nu există defecte recurente identificate.")
+        st.success("Nu există defecte recurente identificate în ultimele 180 de zile.")
 
     st.markdown("---")
 
-    # =========================================================
-    # REVIZII SCADENTE
-    # =========================================================
     st.subheader("📅 Întrețineri Scadente")
-
-    with db_cursor() as c:
-        c.execute("""
-            SELECT
-                denumire,
-                data_intretinere
-            FROM masini
-            WHERE data_intretinere IS NOT NULL
-              AND data_intretinere <= CURRENT_DATE + INTERVAL '30 days'
-            ORDER BY data_intretinere
-        """)
-        masini_scadente = c.fetchall()
-
     if masini_scadente:
         df_scadente = pd.DataFrame(masini_scadente)
         st.dataframe(df_scadente, use_container_width=True)
@@ -856,7 +825,7 @@ with tab_activitati:
                     st.info("E-mailul și Google Sheet s-au sincronizat în fundal.")
 
 # ------------------------------------------------------------------------------
-# TAB 2: Documentatii / Proceduri de reparații
+# TAB 2: Documentații / Proceduri de reparații
 # ------------------------------------------------------------------------------
 with tab_optimizare:
     st.subheader("📊 Documentații / Proceduri de reparații")
@@ -1177,11 +1146,11 @@ with tab_rapoarte:
         st.info("Nu există rapoarte înregistrate care să corespundă criteriilor de căutare.")
 
 # ------------------------------------------------------------------------------
-# TAB 7: Predicții & Mentenanță Predictivă
+# TAB 7: Predicții & Mentenanță Predictivă (Cu Predictive Health Score)
 # ------------------------------------------------------------------------------
 with tab_predictii:
-    st.subheader("🔮 Tab Predicții & Analiză Mentenanță Preventivă")
-    st.markdown("Selectează firma și mașina dorită pentru a analiza istoricul de defecte recurente și consumul de piese asociat.")
+    st.subheader("🔮 Tab Predicții & Analiză Mentenanță Preventivă (Health Score)")
+    st.markdown("Selectează firma și mașina dorită pentru a calcula indicele de sănătate (Health Score) și a analiza defectele recurente.")
 
     firme_list_pred = get_firme()
     nume_firme_pred = [f['nume_firma'] for f in firme_list_pred]
@@ -1214,6 +1183,41 @@ with tab_predictii:
                 """, (sel_firma_pred, sel_masina_pred))
                 defecte_recurente = cur_pred.fetchall()
 
+                cur_pred.execute("""
+                    SELECT COUNT(*) as oprite
+                    FROM reparatii
+                    WHERE firma = %s AND masina = %s AND stare_finala = 'Oprită / Necesar piese'
+                """, (sel_firma_pred, sel_masina_pred))
+                res_oprite = cur_pred.fetchone()
+                utilaj_oprit_count = res_oprite['oprite'] if res_oprite else 0
+
+            score = 100
+            for d in defecte_recurente:
+                frecv = d['frecventa']
+                score -= (frecv * 5)
+                if frecv >= 3:
+                    score -= 10
+            
+            if utilaj_oprit_count > 0:
+                score -= (utilaj_oprit_count * 15)
+            
+            score = max(0, min(100, score))
+
+            st.markdown(f"### 🛡️ Index de Sănătate Echipament (Health Score): **{sel_masina_pred}**")
+            col_sc1, col_sc2 = st.columns([2, 1])
+            with col_sc1:
+                st.progress(score / 100)
+            with col_sc2:
+                if score >= 90:
+                    st.success(f"🟢 Health Score: {score}% (Excelent)")
+                elif score >= 70:
+                    st.info(f"🟡 Health Score: {score}% (Bun)")
+                elif score >= 50:
+                    st.warning(f"🟠 Health Score: {score}% (Atenție)")
+                else:
+                    st.error(f"🔴 Health Score: {score}% (Risc Ridicat)")
+
+            st.markdown("---")
             st.markdown(f"### 📈 Analiză Defecte Recurente pentru: **{sel_masina_pred}** ({sel_firma_pred})")
 
             if defecte_recurente:
@@ -1248,12 +1252,7 @@ with tab_predictii:
             st.markdown("---")
             st.markdown(f"### 🔩 Istoric Consum Piese / Necesare pentru: **{sel_masina_pred}**")
             
-            with db_cursor() as cur_piese:
-                cur_piese.execute("""
-                    SELECT piese_json, data_creare, id FROM reparatii
-                    WHERE firma = %s AND masina = %s AND piese_json IS NOT NULL
-                """, (sel_firma_pred, sel_masina_pred))
-                reparatii_piese = cur_piese.fetchall()
+            reparatii_piese = get_predictive_piese_data(sel_firma_pred, sel_masina_pred)
 
             total_piese_consum = {}
             for rep in reparatii_piese:
