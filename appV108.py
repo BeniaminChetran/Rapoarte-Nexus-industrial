@@ -282,12 +282,10 @@ def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume
     
     destinatari = []
     
-    # Verificare dacă clientul are o adresă de email validă
     if destinatar_client and destinatar_client.strip():
         destinatari.append(destinatar_client.strip())
-        mesaj_client_status = f"E-mailul a fost trimis către client: {destinatar_client.strip()}"
     else:
-        mesaj_client_status = "Clientul nu are o adresa de email iar emailul va fi trimis doar la personalul Nexus."
+        pass
     
     if email_tehnician:
         destinatari.append(email_tehnician.strip())
@@ -308,7 +306,7 @@ def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume
                 server.send_message(msg)
                 
                 if not (destinatar_client and destinatar_client.strip()):
-                    return True, f"Clientul nu are o adresa de email iar emailul va fi trimis doar la personalul Nexus (Trimis la: {', '.join(destinatari_unice)})"
+                    return True, f"Clientul nu are o adresa de email iar emailul va fi trimis doar la personalul Nexus"
                 else:
                     return True, f"E-mail trimis cu succes către: {', '.join(destinatari_unice)}"
             else:
@@ -431,7 +429,7 @@ with tab_firme:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 3: Lista Mașini & Subansambluri (Filtrate după firmă)
+# TAB 3: Lista Mașini & Subansambluri (Controlate direct de Selectează Firma Proprietară)
 # ------------------------------------------------------------------------------
 with tab_masini:
     st.subheader("🏭 Gestiune Mașini și Echipamente")
@@ -479,13 +477,11 @@ with tab_masini:
                 st.error("Selectați o firmă și introduceți denumirea mașinii.")
 
     st.markdown("---")
-    st.subheader("📋 Mașini Înregistrate (Filtrate pe Firmă)")
+    st.subheader("📋 Mașini Înregistrate pentru Firma Selectată")
     
-    # Filtrare mașini în funcție de firma aleasă
-    filtru_firma_masini = st.selectbox("Filtrează după Firmă", options=["Toate firmele"] + list(firme_dict.keys()), key="filtru_f_masina")
-    
-    if filtru_firma_masini != "Toate firmele":
-        fid_selectat = firme_dict[filtru_firma_masini]
+    # Lista de mașini este acum filtrată automat direct pe baza firmei alese în sus în formular ("Selectează Firma Proprietară")
+    if firme_dict and m_firma != "Nicio firmă":
+        fid_selectat = firme_dict[m_firma]
         c.execute("""
             SELECT m.id, f.nume_firma, m.denumire, m.tip_masina, m.serie, m.an_fabricatie, m.subansambluri, m.erori, m.defecte, m.remediu, m.piese_necesare, m.piese_inlocuite, m.tipuri_fluide, m.tip_intretinere 
             FROM masini m JOIN firme f ON m.firma_id = f.id WHERE m.firma_id = %s
@@ -535,7 +531,7 @@ with tab_masini:
                             st.success("Mașina a fost ștearsă din Supabase!")
                             st.rerun()
     else:
-        st.info("Nu există mașini înregistrate pentru filtrul selectat.")
+        st.info("Nu există mașini înregistrate pentru firma selectată.")
     conn.close()
 
 # ------------------------------------------------------------------------------
@@ -724,7 +720,7 @@ with tab_activitati:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 2: Documentatii / Proceduri de reparații (Cu editare pași)
+# TAB 2: Documentatii / Proceduri de reparații
 # ------------------------------------------------------------------------------
 with tab_optimizare:
     st.subheader("📊 Documentatii / Proceduri de reparații")
@@ -787,7 +783,6 @@ with tab_optimizare:
                 
             if st.button("💾 Salvează Toți Pașii Noi în Baza de Date", type="primary"):
                 if def_final:
-                    # Determinăm ultimul număr de pas existent
                     c.execute("SELECT MAX(pas_numar) FROM optimizari_interventie WHERE masina = %s AND defect = %s", (sel_opt_masina, def_final))
                     max_p = c.fetchone()
                     start_nr = (max_p[0] if max_p and max_p[0] else 0) + 1
@@ -802,7 +797,7 @@ with tab_optimizare:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 4: Tabelul de Piese (Cu buton de editare și ștergere în DB)
+# TAB 4: Tabelul de Piese
 # ------------------------------------------------------------------------------
 with tab_piese:
     st.subheader("🔧 Gestiune Piese de Schimb")
@@ -874,7 +869,7 @@ with tab_piese:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 6: Istoric & Google Sheet (Optimizat - Fără N+1 queries și cu LIMIT 100)
+# TAB 6: Istoric & Google Sheet
 # ------------------------------------------------------------------------------
 with tab_rapoarte:
     st.subheader("📋 Istoric Intervenții")
