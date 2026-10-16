@@ -623,7 +623,7 @@ with tab_activitati:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 2: Documentatii / Proceduri de reparații (Cu control unic unificat)
+# TAB 2: Documentatii / Proceduri de reparații
 # ------------------------------------------------------------------------------
 with tab_optimizare:
     st.subheader("📊 Documentatii / Proceduri de reparații")
@@ -635,12 +635,9 @@ with tab_optimizare:
         st.warning("⚠️ Adăugați mașini în Tabul 3.")
     else:
         sel_opt_masina = st.selectbox("Selectează Mașina", options=masini_existente, key="opt_m_sel")
-        
-        # Preluăm defectele existente pentru mașina selectată
         c.execute("SELECT DISTINCT defect FROM optimizari_interventie WHERE masina = %s", (sel_opt_masina,))
         defecte_existente = [row[0] for row in c.fetchall() if row[0]]
         
-        # UN SINGUR CONTROL UNIFICAT PENTRU SELECTARE ȘI INTRODUCERE DEFECT NOU (Stil combobox liber/select)
         opțiuni_defecte = ["+ Defect nou (scrie mai jos)"] + defecte_existente
         sel_opt_defect_complet = st.selectbox("Selectează sau creează Defectul / Procedura", options=opțiuni_defecte, key="select_defect_unificat")
         
@@ -651,7 +648,6 @@ with tab_optimizare:
             
         st.markdown("---")
         
-        # Dacă s-a selectat un defect existent, afișăm pașii pentru editare/ștergere
         if sel_opt_defect_complet != "+ Defect nou (scrie mai jos)" and sel_opt_defect_complet:
             st.markdown(f"##### 🔎 Editare Pași de Reparație existenți pentru: **{sel_opt_defect_complet}**")
             c.execute("SELECT id, pas_numar, descriere_pas FROM optimizari_interventie WHERE masina = %s AND defect = %s ORDER BY pas_numar", (sel_opt_masina, sel_opt_defect_complet))
@@ -782,10 +778,10 @@ with tab_piese:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 6: Istoric & Google Sheet
+# TAB 6: Istoric & Posibilitate Editare Raport Vechi
 # ------------------------------------------------------------------------------
 with tab_rapoarte:
-    st.subheader("📋 Istoric Intervenții")
+    st.subheader("📋 Istoric Intervenții (Vizualizare, Generare PDF & Modificare)")
     conn = get_db_connection()
     c = conn.cursor()
     c.execute("SELECT * FROM reparatii ORDER BY id DESC LIMIT 100")
@@ -794,19 +790,58 @@ with tab_rapoarte:
     if reparatii_db:
         for full_rep in reparatii_db:
             rid, rfirma, rmas, rsub, rdef, rcod_err, rpiese_json, rtit, rsimp, rsol, rstare, rdurata, ropt, rtech, rverif, rdata = full_rep
-            with st.expander(f"📄 Raport Inregistrare #{rid} - Firmă: {rfirma} | Echipament: {rmas}"):
-                st.write(f"**Titlu:** {rtit}")
-                st.write(f"**Soluție:** {rsol}")
+            
+            with st.expander(f"📄 Raport Înregistrare #{rid} - Firmă: {rfirma} | Echipament: {rmas} (Data: {str(rdata)[:10]})"):
+                # FORMULAR DE MODIFICARE RAPORT VECHI
+                with st.form(f"form_mod_istoric_{rid}"):
+                    st.markdown(f"##### ✏️ Modificare Raport #{rid}")
+                    em_titlu = st.text_input("Titlu Lucrare", value=rtit or "", key=f"em_tit_{rid}")
+                    em_simptom = st.text_area("Simptom Inițial", value=rsimp or "", key=f"em_simp_{rid}")
+                    em_defect = st.text_area("Defect Constatat", value=rdef or "", key=f"em_def_{rid}")
+                    em_solutie = st.text_area("Soluție / Lucrări Executate", value=rsol or "", key=f"em_sol_{rid}")
+                    
+                    c_ e1, c_e2 = st.columns(2)
+                    with c_e1:
+                        em_durata = st.number_input("Durată (minute)", value=int(rdurata) if rdurata else 60, key=f"em_dur_{rid}")
+                        em_stare = st.selectbox("Stare Finală", ["Funcțională", "În testare", "Oprită / Necesar piese"], index=0 if rstare=="Funcțională" else 1, key=f"em_sta_{rid}")
+                    with c_e2:
+                        em_tech = st.text_input("Tehnician", value=rtech or "", key=f"em_tec_{rid}")
+                        em_verif = st.text_input("Verificator / Client", value=rverif or "", key=f"em_ver_{rid}")
+                        
+                    em_opt = st.text_area("Recomandări Tehnice", value=ropt or "", key=f"em_opt_{rid}")
+                    
+                    if st.form_submit_button("💾 Salvează Modificările Raportului"):
+                        c.execute("""
+                            UPDATE reparatii 
+                            SET titlu = %s, simptom = %s, defect = %s, solutie = %s, durata = %s, stare_finala = %s, tehnician = %s, verificator = %s, optimizari = %s
+                            WHERE id = %s
+                        """, (em_titlu, em_simptom, em_defect, em_solutie, em_durata, em_stare, em_tech, em_verif, em_opt, rid))
+                        conn.commit()
+                        st.success(f"Raportul #{rid} a fost actualizat cu succes în baza de date!")
+                        st.rerun()
+
+                st.markdown("---")
+                
+                piese_data = json.loads(rpiese_json) if rpiese_json else []
                 date_pdf = {
                     "id": rid, "client": rfirma, "masina": rmas, "subansamblu": rsub, "durata": rdurata,
-                    "cod_eroare": rcod_err, "stare_finala": rstare, "piese_json": json.loads(rpiese_json) if rpiese_json else [],
+                    "cod_eroare": rcod_err, "stare_finala": rstare, "piese_json": piese_data,
                     "titlu": rtit, "simptom": rsimp, "defect": rdef, "solutie": rsol, "optimizari": ropt,
                     "tehnician": rtech, "verificator": rverif, "data": rdata
                 }
-                if st.button(f"Generează PDF Raport #{rid}", key=f"btn_pdf_{rid}"):
-                    st.session_state[f"pdf_bytes_{rid}"] = genereaza_pdf(date_pdf)
-                if f"pdf_bytes_{rid}" in st.session_state:
-                    st.download_button(label=f"📥 Descarcă PDF Raport #{rid}", data=st.session_state[f"pdf_bytes_{rid}"], file_name=f"Raport_{rid}.pdf", mime="application/pdf", key=f"dl_{rid}")
+                
+                col_h1, col_h2 = st.columns(2)
+                with col_h1:
+                    if st.button(f"Generează PDF Actualizat", key=f"btn_pdf_{rid}"):
+                        st.session_state[f"pdf_bytes_{rid}"] = genereaza_pdf(date_pdf)
+                    if f"pdf_bytes_{rid}" in st.session_state:
+                        st.download_button(label=f"📥 Descarcă PDF Raport #{rid}", data=st.session_state[f"pdf_bytes_{rid}"], file_name=f"Raport_{rid}.pdf", mime="application/pdf", key=f"dl_{rid}")
+                with col_h2:
+                    if st.button(f"🗑️ Șterge Raport #{rid}", key=f"btn_del_rep_{rid}", type="primary"):
+                        c.execute("DELETE FROM reparatii WHERE id = %s", (rid,))
+                        conn.commit()
+                        st.success(f"Raportul #{rid} a fost șters!")
+                        st.rerun()
     else:
         st.info("Nu există rapoarte înregistrate.")
     conn.close()
