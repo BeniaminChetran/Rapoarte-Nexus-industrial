@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------------
-# APLICATIE STREAMLIT CMMS ULTRA-PERFORMANTA (SUPABASE / POSTGRESQL) - v9.9.1 PREDICTII
+# APLICATIE STREAMLIT CMMS ENTERPRISE DASHBOARD & PREDICTIVE (SUPABASE / POSTGRESQL)
 #-----------------------------------------------------------------------------------
 
 import os
@@ -18,7 +18,6 @@ import psycopg2.extras
 from psycopg2.pool import ThreadedConnectionPool
 import pandas as pd
 
-# Încărcare variabile de mediu
 load_dotenv()
 
 # ------------------------------------------------------------------------------
@@ -54,7 +53,7 @@ def db_cursor():
 # 2. Configurare Pagină & Stil UI
 # ------------------------------------------------------------------------------
 st.set_page_config(
-    page_title="NexInd CMMS",
+    page_title="NexInd CMMS Enterprise",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -332,13 +331,14 @@ def background_sync_task(payload_sheet, email_client, subiect, corp_mesaj, pdf_b
 # 6. Interfața Principală Streamlit & Sidebar
 # ------------------------------------------------------------------------------
 st.sidebar.title("📌 Nexus Control Panel")
-st.sidebar.text("CMMS Enterprise v9.9.1")
+st.sidebar.text("CMMS Enterprise Dashboard v10.0")
 st.sidebar.markdown("---")
 st.sidebar.info("Conexiune optimizată prin ThreadedConnectionPool.")
 
-st.title("🛠️ NexInd CMMS")
+st.title("🛠️ NexInd CMMS Dashboard & Predictive")
 
-tab_activitati, tab_optimizare, tab_masini, tab_piese, tab_firme, tab_rapoarte, tab_predictii, tab_setari = st.tabs([
+tab_dashboard, tab_activitati, tab_optimizare, tab_masini, tab_piese, tab_firme, tab_rapoarte, tab_predictii, tab_setari = st.tabs([
+    "📈 0. Dashboard KPI",
     "📝 1. Activități", 
     "📊 2. Documentatii / Proceduri", 
     "🏭 3. Mașini", 
@@ -348,6 +348,69 @@ tab_activitati, tab_optimizare, tab_masini, tab_piese, tab_firme, tab_rapoarte, 
     "🔮 7. Predicții",
     "⚙️ 8. Setări"
 ])
+
+# ------------------------------------------------------------------------------
+# TAB 0: Dashboard & KPI Management Center
+# ------------------------------------------------------------------------------
+with tab_dashboard:
+    st.subheader("📈 Panou Central Management & Indicatori KPI")
+    st.markdown("Monitorizare în timp real a performanței operaționale, volumului de intervenții și consumului de resurse.")
+
+    with db_cursor() as cur_kpi:
+        # Total Intervenții
+        cur_kpi.execute("SELECT COUNT(*) as total, SUM(durata) as total_ore, AVG(durata) as medie_durata FROM reparatii")
+        res_rep = cur_kpi.fetchone()
+        total_interventii = res_rep['total'] if res_rep and res_rep['total'] else 0
+        total_minute = res_rep['total_ore'] if res_rep and res_rep['total_ore'] else 0
+        medie_durata = res_rep['medie_durata'] if res_rep and res_rep['medie_durata'] else 0
+
+        # Total Firme & Mașini
+        cur_kpi.execute("SELECT COUNT(*) as total FROM firme")
+        total_firme = cur_kpi.fetchone()['total']
+
+        cur_kpi.execute("SELECT COUNT(*) as total FROM masini")
+        total_masini = cur_kpi.fetchone()['total']
+
+        # Top 5 Defecte Recurente la nivel general
+        cur_kpi.execute("""
+            SELECT masina, defect, COUNT(*) as frecventa
+            FROM reparatii
+            WHERE defect IS NOT NULL AND defect != ''
+            GROUP BY masina, defect
+            ORDER BY frecventa DESC
+            LIMIT 5
+        """)
+        top_defecte = cur_kpi.fetchall()
+
+    # Afișare metrici KPI principali (Metric Cards)
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric(label="📊 Total Intervenții", value=total_interventii)
+    with col2:
+        st.metric(label="⏱️ Timp Total Lucrat", value=f"{round(total_minute / 60, 1)} ore")
+    with col3:
+        st.metric(label="🏢 Clienți Activi", value=total_firme)
+    with col4:
+        st.metric(label="🏭 Echipamente", value=total_masini)
+
+    st.markdown("---")
+    
+    c_kpi1, c_kpi2 = st.columns(2)
+    with c_kpi1:
+        st.markdown("##### 🚨 Top Defecte Recurente la Nivel de Fabrică")
+        if top_defecte:
+            df_def = pd.DataFrame(top_defecte)
+            st.dataframe(df_def, use_container_width=True)
+        else:
+            st.info("Nu există suficiente date înregistrate pentru topul defectelor.")
+
+    with c_kpi2:
+        st.markdown("##### ⚙️ Informații Utile de Mentenanță")
+        st.info(
+            f"- **Durata Medie per Intervenție:** {round(medie_durata, 1)} minute\n"
+            f"- **Eficiență Pool DB:** ThreadedConnectionPool activ (max 20 conexiuni simultane)\n"
+            f"- **Sincronizare:** Background Threads active pentru Google Sheets & SMTP"
+        )
 
 # ------------------------------------------------------------------------------
 # TAB 5: Nomenclator Firme
@@ -983,7 +1046,7 @@ with tab_rapoarte:
         st.info("Nu există rapoarte înregistrate care să corespundă criteriilor de căutare.")
 
 # ------------------------------------------------------------------------------
-# TAB 7: Predicții & Mentenanță Predictivă (Noul Tab Solicitat)
+# TAB 7: Predicții & Mentenanță Predictivă
 # ------------------------------------------------------------------------------
 with tab_predictii:
     st.subheader("🔮 Tab Predicții & Analiză Mentenanță Preventivă")
@@ -1009,7 +1072,6 @@ with tab_predictii:
         st.markdown("---")
 
         if sel_masina_pred and sel_masina_pred != "Nicio mașină disponibilă":
-            # Preluare date statistice despre defecte pentru mașina aleasă
             with db_cursor() as cur_pred:
                 cur_pred.execute("""
                     SELECT defect, COUNT(*) as frecventa, MAX(data_creare) as ultima_aparitie, 
@@ -1052,7 +1114,6 @@ with tab_predictii:
             else:
                 st.success("✅ Nu există defecte recurente înregistrate pentru această mașină. Echipamentul are un istoric stabil.")
 
-            # Analiză piese utilizate sau necesare pentru mașina aleasă
             st.markdown("---")
             st.markdown(f"### 🔩 Istoric Consum Piese / Necesare pentru: **{sel_masina_pred}**")
             
