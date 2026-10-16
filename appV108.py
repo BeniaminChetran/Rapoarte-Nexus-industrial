@@ -427,7 +427,7 @@ with tab_firme:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 3: Lista Mașini & Subansambluri (Un singur combobox de selecție în afara formularului pentru filtrare instant)
+# TAB 3: Lista Mașini & Subansambluri
 # ------------------------------------------------------------------------------
 with tab_masini:
     st.subheader("🏭 Gestiune Mașini și Echipamente")
@@ -437,8 +437,6 @@ with tab_masini:
     firme_dict = {f[1]: f[0] for f in firme_list}
     
     lista_firme_select = ["Nicio firmă"] + list(firme_dict.keys())
-    
-    # Câmpul principal de selecție a firmei (în afara formularului, asigură filtrarea instant a listei)
     m_firma = st.selectbox("Selectează Firma Proprietară", options=lista_firme_select, key="select_firma_principal_masini")
     
     st.markdown("---")
@@ -483,7 +481,6 @@ with tab_masini:
     st.markdown("---")
     st.subheader("📋 Mașini Înregistrate")
     
-    # Filtrare automată în funcție de selecția principală de sus
     if m_firma != "Nicio firmă":
         firma_id_selectat = firme_dict[m_firma]
         c.execute("""
@@ -801,7 +798,7 @@ with tab_optimizare:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 4: Tabelul de Piese
+# TAB 4: Tabelul de Piese (Cu filtru după mașina selectată)
 # ------------------------------------------------------------------------------
 with tab_piese:
     st.subheader("🔧 Gestiune Piese de Schimb")
@@ -837,12 +834,29 @@ with tab_piese:
 
     st.markdown("---")
     st.subheader("📋 Piese Înregistrate (Modificare & Ștergere)")
-    piese_db_all = get_piese()
+    
+    # Câmp de selecție a mașinii pentru filtrarea tabelului de piese
+    filtru_piese_masina = st.selectbox("Filtrează piesele după mașină", options=["Toate mașinile / General"] + masini_existente, key="filtru_piese_pe_masina")
+    
+    if filtru_piese_masina != "Toate mașinile / General":
+        # Căutăm piesele care conțin mașina selectată în șirul de mașini de montaj
+        c.execute("""
+            SELECT * FROM piese 
+            WHERE masina_montaj ILIKE %s OR masina_montaj = 'General'
+            ORDER BY denumire
+        """, (f"%{filtru_piese_masina}%",))
+    else:
+        c.execute("""
+            SELECT * FROM piese
+            ORDER BY denumire
+        """)
+        
+    piese_db_all = c.fetchall()
     
     if piese_db_all:
         for p in piese_db_all:
             pid, pden, pcod_p, pcod_c, pmas, psub = p[0], p[1], p[2], p[3], p[4], p[5]
-            with st.expander(f"🔩 {pden} (Cod Producător: {pcod_p or 'N/A'})"):
+            with st.expander(f"🔩 {pden} (Mașini: {pmas})"):
                 with st.form(f"mod_piesa_{pid}"):
                     mp_den = st.text_input("Denumire Piesă", value=pden, key=f"mp_den_{pid}")
                     mp_prod = st.text_input("Cod Producător", value=pcod_p or "", key=f"mp_prod_{pid}")
@@ -869,7 +883,7 @@ with tab_piese:
                             st.success("Piesa a fost ștearsă din baza de date!")
                             st.rerun()
     else:
-        st.info("Nu există piese înregistrate în baza de date.")
+        st.info("Nu există piese înregistrate pentru mașina selectată.")
     conn.close()
 
 # ------------------------------------------------------------------------------
