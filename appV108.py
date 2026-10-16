@@ -825,7 +825,7 @@ with tab_piese:
         st.info(f"Nu există piese înregistrate pentru selecția curentă ({select_masina_unica}).")
 
 # ------------------------------------------------------------------------------
-# TAB 6: Istoric, Căutare Avansată & Editare (Inclusiv Piese)
+# TAB 6: Istoric, Căutare Avansată & Editare (Inclusiv Piese & GSheet Update)
 # ------------------------------------------------------------------------------
 with tab_rapoarte:
     st.subheader("📋 Istoric Intervenții & Căutare Avansată")
@@ -913,7 +913,6 @@ with tab_rapoarte:
                         
                     st.markdown("##### 🔧 Gestiune Piese (Utilizate / Înlocuite / Necesare)")
                     
-                    # Cheie unică în session_state pentru listele de piese din istoric
                     key_state_piese = f"hist_piese_{rid}"
                     if key_state_piese not in st.session_state:
                         piese_existente_db = json.loads(rpiese_json) if rpiese_json else []
@@ -947,12 +946,31 @@ with tab_rapoarte:
                                 SET titlu = %s, simptom = %s, defect = %s, solutie = %s, durata = %s, stare_finala = %s, tehnician = %s, verificator = %s, optimizari = %s, piese_json = %s
                                 WHERE id = %s
                             """, (em_titlu, em_simptom, em_defect, em_solutie, em_durata, em_stare, em_tech, em_verif, em_opt, json.dumps(updated_piese_list, ensure_ascii=False), rid))
-                        st.success(f"Raportul #{rid} a fost actualizat cu succes în baza de date!")
+                        
+                        # Actualizare Google Sheet la modificarea raportului
+                        setari_info = get_setari()
+                        sheet_url = setari_info['google_sheet_url']
+                        if sheet_url:
+                            try:
+                                payload_sheet = {
+                                    "status": "actualizat", "id": str(rid), "data": str(rdata)[:10],
+                                    "ora": datetime.now().strftime("%H:%M:%S"), "firma": str(rfirma), "masina": str(rmas),
+                                    "subansamblu": str(rsub or "General"), "solutie": str(em_solutie or ""),
+                                    "verificator": str(em_verif or ""), "tehnician": str(em_tech or ""),
+                                    "piese utilizate": ", ".join([f"{p.get('piesa')} ({p.get('cantitate')})" for p in updated_piese_list if p.get('tip') in ['Utilizata', 'Inlocuita']]),
+                                    "necesar piese": ", ".join([f"{p.get('piesa')} ({p.get('cantitate')})" for p in updated_piese_list if p.get('tip') in ['Necesara', 'De Comandat']])
+                                }
+                                req = urllib.request.Request(sheet_url, data=json.dumps(payload_sheet).encode('utf-8'), headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'})
+                                with urllib.request.urlopen(req) as response:
+                                    response.read().decode('utf-8')
+                            except Exception as e:
+                                st.warning(f"Google Sheet update error: {str(e)}")
+
+                        st.success(f"Raportul #{rid} a fost actualizat cu succes în baza de date și în Google Sheet!")
                         st.rerun()
 
                 st.markdown("---")
                 
-                # Preluăm datele actualizate pentru PDF
                 piese_data = json.loads(rpiese_json) if rpiese_json else []
                 date_pdf = {
                     "id": rid, "client": rfirma, "masina": rmas, "subansamblu": rsub, "durata": rdurata,
