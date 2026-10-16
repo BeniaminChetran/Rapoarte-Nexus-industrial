@@ -738,7 +738,7 @@ with tab_optimizare:
         defecte_existente = [row[0] for row in c.fetchall() if row[0]]
         sel_opt_defect = st.selectbox("Selectează Defectul / Procedura", options=defecte_existente + ["+ Defect nou"])
         
-        def_final = st.text_area("Descriere Defect Nou") if sel_opt_defect == "+ Defect nou" else sel_opt_defect
+        def_final = st.text_input("Descriere Defect Nou") if sel_opt_defect == "+ Defect nou" else sel_opt_defect
             
         if sel_opt_defect != "+ Defect nou" and sel_opt_defect:
             st.markdown(f"##### 🔎 Editare Pași de Reparație Existenti:")
@@ -798,7 +798,7 @@ with tab_optimizare:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 4: Tabelul de Piese (Filtrare dinamică plasată în afara formularului)
+# TAB 4: Tabelul de Piese (Filtrare exact ca la mașini și firme)
 # ------------------------------------------------------------------------------
 with tab_piese:
     st.subheader("🔧 Gestiune Piese de Schimb")
@@ -807,18 +807,15 @@ with tab_piese:
     masini_rows = get_masini()
     masini_existente = [row[2] for row in masini_rows]
     
-    # 1. ELEMENTUL PRINCIPAL DE SELECȚIE (ÎN AFARA FORMULARULUI)
-    filtru_piese_masina = st.selectbox(
-        "Filtrează lista după mașina pe care se montează", 
+    # UN SINGUR COMBOBOX PRINCIPAL PLASAT SUS, ÎN AFARA ORICĂRUI FORMULAR
+    select_masina_piese = st.selectbox(
+        "Selectează mașina pentru filtrare piese", 
         options=["Toate mașinile / General"] + masini_existente, 
         key="select_masina_principal_piese"
     )
     
     st.markdown("---")
     st.subheader("➕ Adaugă Piesă Nouă")
-    
-    # Pre-selectăm în formular mașina aleasă sus (dacă nu e opțiunea bulk)
-    default_masini_form = [filtru_piese_masina] if filtru_piese_masina in masini_existente else []
     
     with st.form("form_piese", clear_on_submit=True):
         c1, c2 = st.columns(2)
@@ -827,7 +824,7 @@ with tab_piese:
             p_cod_prod = st.text_input("Cod Producător")
             p_cod_com = st.text_input("Cod Comercial")
         with c2:
-            p_masini_alese = st.multiselect("Mașinile pe care se montează", options=masini_existente, default=default_masini_form)
+            p_masini_alese = st.multiselect("Mașinile pe care se montează", options=masini_existente)
             p_sub = st.text_input("Subansamblu")
             
         if st.form_submit_button("💾 Salvează Piesa"):
@@ -847,8 +844,8 @@ with tab_piese:
     st.markdown("---")
     st.subheader("📋 Piese Înregistrate (Modificare & Ștergere)")
     
-    # 2. FILTRAREA LISTEI ÎN FUNCȚIE DE CONTROLUL PRINCIPAL DE SUS
-    if filtru_piese_masina != "Toate mașinile / General":
+    # FILTRAREA INSTANTANEE A LISTEI ÎN FUNCȚIE DE SELECȚIA DE SUS
+    if select_masina_piese != "Toate mașinile / General":
         c.execute("""
             SELECT * FROM piese 
             WHERE TRIM(masina_montaj) ILIKE %s 
@@ -859,9 +856,9 @@ with tab_piese:
                OR masina_montaj IS NULL
             ORDER BY denumire
         """, (
-            f"%{filtru_piese_masina}%", 
-            f"{filtru_piese_masina},%", 
-            f"%, {filtru_piese_masina}%"
+            f"%{select_masina_piese}%", 
+            f"{select_masina_piese},%", 
+            f"%, {select_masina_piese}%"
         ))
     else:
         c.execute("""
@@ -901,7 +898,7 @@ with tab_piese:
                             st.success("Piesa a fost ștearsă din baza de date!")
                             st.rerun()
     else:
-        st.info(f"Nu există piese înregistrate pentru mașina **{filtru_piese_masina}**.")
+        st.info(f"Nu există piese înregistrate pentru mașina selectată ({select_masina_piese}).")
     conn.close()
 
 # ------------------------------------------------------------------------------
