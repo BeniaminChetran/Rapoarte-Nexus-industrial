@@ -798,7 +798,7 @@ with tab_optimizare:
     conn.close()
 
 # ------------------------------------------------------------------------------
-# TAB 4: Tabelul de Piese (Filtrare corectă prin masina_montaj)
+# TAB 4: Tabelul de Piese (Filtrare dinamică plasată în afara formularului)
 # ------------------------------------------------------------------------------
 with tab_piese:
     st.subheader("🔧 Gestiune Piese de Schimb")
@@ -807,15 +807,19 @@ with tab_piese:
     masini_rows = get_masini()
     masini_existente = [row[2] for row in masini_rows]
     
-    # Control principal de sus pentru filtrare instantanee
+    # 1. ELEMENTUL PRINCIPAL DE SELECȚIE (ÎN AFARA FORMULARULUI)
     filtru_piese_masina = st.selectbox(
-        "Mașinile pe care se montează", 
+        "Filtrează lista după mașina pe care se montează", 
         options=["Toate mașinile / General"] + masini_existente, 
         key="select_masina_principal_piese"
     )
     
     st.markdown("---")
     st.subheader("➕ Adaugă Piesă Nouă")
+    
+    # Pre-selectăm în formular mașina aleasă sus (dacă nu e opțiunea bulk)
+    default_masini_form = [filtru_piese_masina] if filtru_piese_masina in masini_existente else []
+    
     with st.form("form_piese", clear_on_submit=True):
         c1, c2 = st.columns(2)
         with c1:
@@ -823,7 +827,7 @@ with tab_piese:
             p_cod_prod = st.text_input("Cod Producător")
             p_cod_com = st.text_input("Cod Comercial")
         with c2:
-            p_masini_alese = st.multiselect("Mașinile pe care se montează", options=masini_existente)
+            p_masini_alese = st.multiselect("Mașinile pe care se montează", options=masini_existente, default=default_masini_form)
             p_sub = st.text_input("Subansamblu")
             
         if st.form_submit_button("💾 Salvează Piesa"):
@@ -843,7 +847,7 @@ with tab_piese:
     st.markdown("---")
     st.subheader("📋 Piese Înregistrate (Modificare & Ștergere)")
     
-    # Interogare robustă pentru a căuta mașina în masina_montaj sau piese generale
+    # 2. FILTRAREA LISTEI ÎN FUNCȚIE DE CONTROLUL PRINCIPAL DE SUS
     if filtru_piese_masina != "Toate mașinile / General":
         c.execute("""
             SELECT * FROM piese 
@@ -897,7 +901,7 @@ with tab_piese:
                             st.success("Piesa a fost ștearsă din baza de date!")
                             st.rerun()
     else:
-        st.info("Nu există piese înregistrate pentru mașina selectată.")
+        st.info(f"Nu există piese înregistrate pentru mașina **{filtru_piese_masina}**.")
     conn.close()
 
 # ------------------------------------------------------------------------------
