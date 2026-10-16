@@ -1,8 +1,4 @@
-Această analiză atinge nivelul următor de maturitate arhitecturală și industrială pentru un sistem CMMS de clasă enterprise. Un **Health Score** bazat pe ponderarea defectelor, comasarea interogărilor din dashboard într-un singur query optimizat, cache-ul dedicat și transformarea pie chart-ului în bar chart orizontal pentru top clienți vor face ca aplicația să ruleze instantaneu, oferind o experiență de management de top.
 
-Iată codul complet și actualizat, care implementează direct toate aceste optimizări majore (consolidation query în Dashboard, funcții de cache dedicate pentru datele de analiză, limitarea la 180 de zile pentru defectele recurente, schimbarea graficului de clienți în bar chart orientat orizontal și noul **Predictive Health Score** cu bară de progres și indicatori de risc):
-
-```python
 #-----------------------------------------------------------------------------------
 # APLICATIE STREAMLIT CMMS ENTERPRISE DASHBOARD & PREDICTIVE v10.2 (SUPABASE)
 #-----------------------------------------------------------------------------------
