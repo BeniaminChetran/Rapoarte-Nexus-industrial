@@ -1794,7 +1794,7 @@ with tab_dashboard:
             orientation="h",
             title="Top 10 Defecte"
         )
-       st.plotly_chart(fig_defecte, use_container_width=True, key="grafic_top_defecte_dashboard")
+    st.plotly_chart(fig_defecte, use_container_width=True, key="grafic_top_defecte_dashboard")
 
     col1, col2 = st.columns(2)
 
