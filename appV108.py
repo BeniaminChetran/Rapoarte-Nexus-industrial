@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------------
-# APLICATIE NexInd CMMS Enterprise Dashboard & Predictive v10.4.6
+# APLICATIE NexInd CMMS Enterprise Dashboard & Predictive v10.4.7
 #-----------------------------------------------------------------------------------
 
 import os
@@ -89,7 +89,7 @@ def get_firme():
 @st.cache_data(ttl=300)
 def get_masini():
     with db_cursor() as cur:
-        cur.execute("SELECT id, firma_id, denumire, tip_masina, serie, an_fabricatie, subansambluri, erori, defecte, remediu, piese_necesare, piese_inlocuite, tipuri_fluide, data_intretinere, tip_intretinere, stare_utilaj, data_inceput_oprire, motiv_oprire FROM masini")
+        cur.execute("SELECT id, firma_id, denumire, tip_masina, serie, an_fabricatie, subansambluri, erori, defecte, remediu, piese_necesare, piese_inlocuite, tipuri_fluide, data_intretinere, tip_intretinere, stare_utilaj, data_inceput_oprire, motiv_oprire FROM masini ORDER BY denumire")
         return cur.fetchall()
 
 @st.cache_data(ttl=300)
@@ -146,11 +146,11 @@ def get_dashboard_kpi_data():
         """)
         res_rep = c.fetchone()
         
-        # Luăm stările direct din tabelul masini
         c.execute("""
             SELECT 
-                COUNT(*) FILTER (WHERE stare_utilaj = 'Activă') AS active,
-                COUNT(*) FILTER (WHERE stare_utilaj = 'Oprită (Defect / Piese)') AS oprite_defect,
+                COUNT(*) FILTER (WHERE stare_utilaj = 'Activă' OR stare_utilaj = 'Funcțională') AS active,
+                COUNT(*) FILTER (WHERE stare_utilaj = 'În așteptare piese') AS asteptare_piese,
+                COUNT(*) FILTER (WHERE stare_utilaj = 'Nefuncțională / Oprită' OR stare_utilaj = 'Oprită (Defect / Piese)') AS nefunctionale,
                 COUNT(*) FILTER (WHERE stare_utilaj = 'Oprită pentru întreținere') AS oprite_intretinere,
                 COUNT(*) AS total_utilaje
             FROM masini
@@ -413,19 +413,19 @@ def background_sync_task(payload_sheet, email_client, subiect, corp_mesaj, pdf_b
 # 6. Interfața Principală Streamlit & Sidebar
 # ------------------------------------------------------------------------------
 st.sidebar.title("📌 Nexus Control Panel")
-st.sidebar.text("CMMS Enterprise Dashboard v10.4.6")
+st.sidebar.text("CMMS Enterprise Dashboard v10.4.7")
 st.sidebar.markdown("---")
 st.sidebar.info("Conexiune optimizată prin ThreadedConnectionPool & Cache.")
 
 st.title("🛠️ NexInd CMMS Dashboard & Predictive")
 
-# REORGANIZARE TABURI: Istoricul este acum în Tabul 2, iar Procedurile/Optimizările în Tabul 3
+# TITLURI REVIZUITE
 tab_dashboard, tab_activitati, tab_istoric, tab_predictii, tab_masini, tab_piese, tab_firme, tab_setari = st.tabs([
     "📈 0. Dashboard",
     "📝 1. Activități", 
     "📋 2. Istoric", 
     "🔮 3. Predicții",
-    "🏭 4. Mașini & Stări", 
+    "🏭 4. Mașini", 
     "🔧 5. Piese", 
     "📇 6. Firme",
     "⚙️ 7. Setări"
@@ -443,28 +443,28 @@ with tab_dashboard:
     clienti_activi = kpi_res_rep["clienti"] if kpi_res_rep else 0
     
     utilaje_active = kpi_res_masini["active"] if kpi_res_masini else 0
-    oprite_defect = kpi_res_masini["oprite_defect"] if kpi_res_masini else 0
+    asteptare_piese = kpi_res_masini["asteptare_piese"] if kpi_res_masini else 0
+    nefunctionale = kpi_res_masini["nefunctionale"] if kpi_res_masini else 0
     oprite_intretinere = kpi_res_masini["oprite_intretinere"] if kpi_res_masini else 0
-    total_utilaje = kpi_res_masini["total_utilaje"] if kpi_res_masini else 0
 
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
     c1.metric("🔧 Intervenții lună", interventii_luna)
     c2.metric("⏱ Ore lucrate", ore_lucrate)
     c3.metric("🏢 Clienți", clienti_activi)
-    c4.metric("🟢 Active", utilaje_active)
-    c5.metric("🔴 Oprite (Defect/Piese)", oprite_defect)
-    c6.metric("🟡 Oprite (Mentenanță)", oprite_intretinere)
+    c4.metric("🟢 Active / Funcționale", utilaje_active)
+    c5.metric("🟠 În așteptare piese", asteptare_piese)
+    c6.metric("🔴 Nefuncționale / Oprite", nefunctionale)
+    c7.metric("🟡 Mentenanță", oprite_intretinere)
 
     st.markdown("---")
 
-    # Secțiune dedicată pentru vizualizarea clară a stării echipamentelor
-    st.subheader("📊 Situație Detaliată Echipamente (Active / Oprite / Întreținere)")
+    st.subheader("📊 Situație Detaliată Echipamente")
     with db_cursor() as cur_stare:
         cur_stare.execute("""
             SELECT m.denumire, f.nume_firma, m.stare_utilaj, m.data_inceput_oprire, m.motiv_oprire 
             FROM masini m 
             JOIN firme f ON m.firma_id = f.id 
-            ORDER BY m.stare_utilaj DESC, m.denumire
+            ORDER BY m.stare_utilaj, m.denumire
         """)
         toate_masinile_stare = cur_stare.fetchall()
 
@@ -579,6 +579,17 @@ with tab_activitati:
             if st.button("💾 Salvează Activitatea în DB", type="primary", key="btn_salveaza_activitate_tab1"):
                 piese_valide = edited_df.dropna(subset=["Piesa"]).to_dict(orient="records")
                 
+                # Verificăm dacă există piese de comandat sau necesare
+                are_piese_necesare = any(p.get("Tip") in ["Necesara", "De Comandat"] for p in piese_valide)
+
+                # Stabilire stare automată mașină pe baza ultimului raport
+                if stare_fin == "Funcțională":
+                    stare_calculata_masina = "Activă"
+                elif stare_fin in ["Oprită / Necesar piese", "În testare"] and are_piese_necesare:
+                    stare_calculata_masina = "În așteptare piese"
+                else:
+                    stare_calculata_masina = "Nefuncțională / Oprită"
+
                 with db_cursor() as c:
                     c.execute("""
                         INSERT INTO reparatii (firma, masina, subansamblu, defect, cod_eroare, piese_json, titlu, simptom, solutie, stare_finala, durata, optimizari, tehnician, verificator, tip_interventie) 
@@ -588,17 +599,20 @@ with tab_activitati:
                     res_ins = c.fetchone()
                     rid_nou = res_ins['id'] if res_ins else None
 
-                    # Dacă starea finală e oprită, actualizăm automat și starea mașinii în tabelul masini
-                    if stare_fin == "Oprită / Necesar piese":
+                    # Actualizare automată stare mașină în tabelul masini
+                    if stare_calculata_masina == "Activă":
                         c.execute("""
-                            UPDATE masini SET stare_utilaj = 'Oprită (Defect / Piese)', data_inceput_oprire = CURRENT_DATE, motiv_oprire = %s 
+                            UPDATE masini SET stare_utilaj = %s, data_inceput_oprire = NULL, motiv_oprire = NULL 
                             WHERE denumire = %s
-                        """, (defect, sel_masina))
-                    elif stare_fin == "Funcțională":
+                        """, (stare_calculata_masina, sel_masina))
+                    else:
                         c.execute("""
-                            UPDATE masini SET stare_utilaj = 'Activă', data_inceput_oprire = NULL, motiv_oprire = NULL 
+                            UPDATE masini SET stare_utilaj = %s, data_inceput_oprire = CURRENT_DATE, motiv_oprire = %s 
                             WHERE denumire = %s
-                        """, (sel_masina,))
+                        """, (stare_calculata_masina, defect or stare_fin, sel_masina))
+
+                get_masini.clear()
+                get_masini_firma.clear()
 
                 if rid_nou:
                     st.session_state["ultimul_id_salvat"] = rid_nou
@@ -632,11 +646,11 @@ with tab_activitati:
                     ).start()
 
                 st.session_state["raport_salvat"] = True
-                st.success("Activitatea a fost salvată și starea mașinii a fost actualizată!")
+                st.success(f"Activitatea a fost salvată! Starea mașinii a fost setată automat pe: **{stare_calculata_masina}**")
                 st.rerun()
 
 # ------------------------------------------------------------------------------
-# TAB 2: Istoric Intervenții (Mutat aici conform cerinței)
+# TAB 2: Istoric Intervenții
 # ------------------------------------------------------------------------------
 with tab_istoric:
     st.subheader("📋 Istoric Intervenții & Căutare Avansată")
@@ -769,10 +783,10 @@ with tab_predictii:
             st.success(f"Echipament selectat pentru analiză: **{sel_masina_pred}**")
 
 # ------------------------------------------------------------------------------
-# TAB 4: Mașini & Control Stări (Active / Oprite / Întreținere)
+# TAB 4: Mașini
 # ------------------------------------------------------------------------------
 with tab_masini:
-    st.subheader("🏭 Gestiune Mașini, Echipamente & Stări Operative")
+    st.subheader("🏭 Gestiune Mașini și Echipamente")
     firme_list = get_firme()
     firme_dict = {f['nume_firma']: f['id'] for f in firme_list}
     
@@ -787,12 +801,13 @@ with tab_masini:
             m_tip = st.text_input("Tip Mașină")
             m_serie = st.text_input("Număr Serie")
             m_an = st.number_input("An Fabricație", min_value=1950, max_value=2050, value=2020)
-            m_stare_noua = st.selectbox("Stare Inițială Echipament", ["Activă", "Oprită (Defect / Piese)", "Oprită pentru întreținere"])
+            # TITLU REVIZUIT conform cerinței
+            m_stare_noua = st.selectbox("Stare actuală echipament", ["Activă", "În așteptare piese", "Nefuncțională / Oprită", "Oprită pentru întreținere"])
         with c2:
             m_sub = st.text_input("Subansambluri (separate prin virgulă)")
             m_erori = st.text_input("Erori (separate prin virgulă)")
             m_data_ment = st.date_input("Data Întreținere Planificată")
-            m_motiv_oprire_nou = st.text_input("Motiv / DetALII Oprire (dacă e oprită)")
+            m_motiv_oprire_nou = st.text_input("Motiv / Detalii Oprire (dacă e cazul)")
             m_data_oprire = st.date_input("Data Început Oprire (dacă e cazul)")
             
         if st.form_submit_button("💾 Salvează Mașina"):
@@ -814,20 +829,28 @@ with tab_masini:
     
     with db_cursor() as cur:
         if m_firma != "Toate firmele":
-            cur.execute("SELECT m.*, f.nume_firma FROM masini m JOIN firme f ON m.firma_id = f.id WHERE m.firma_id = %s", (firme_dict[m_firma],))
+            cur.execute("SELECT m.*, f.nume_firma FROM masini m JOIN firme f ON m.firma_id = f.id WHERE m.firma_id = %s ORDER BY m.denumire", (firme_dict[m_firma],))
         else:
-            cur.execute("SELECT m.*, f.nume_firma FROM masini m JOIN firme f ON m.firma_id = f.id")
+            cur.execute("SELECT m.*, f.nume_firma FROM masini m JOIN firme f ON m.firma_id = f.id ORDER BY m.denumire")
         masini_db = cur.fetchall()
 
     for m in masini_db:
         stare_curenta = m['stare_utilaj'] if m.get('stare_utilaj') else "Activă"
-        culoare_icon = "🟢" if stare_curenta == "Activă" else ("🔴" if "Defect" in stare_curenta else "🟡")
+        
+        if stare_curenta in ["Activă", "Funcțională"]:
+            culoare_icon = "🟢"
+        elif stare_curenta == "În așteptare piese":
+            culoare_icon = "🟠"
+        elif stare_curenta == "Oprită pentru întreținere":
+            culoare_icon = "🟡"
+        else:
+            culoare_icon = "🔴"
         
         with st.expander(f"{culoare_icon} {m['denumire']} | Stare: {stare_curenta} (Firma: {m['nume_firma']})"):
             with st.form(f"mod_masina_{m['id']}"):
                 mm_den = st.text_input("Denumire", value=m['denumire'], key=f"mm_d_{m['id']}")
                 
-                stari_disponibile = ["Activă", "Oprită (Defect / Piese)", "Oprită pentru întreținere"]
+                stari_disponibile = ["Activă", "În așteptare piese", "Nefuncțională / Oprită", "Oprită pentru întreținere"]
                 idx_stare = stari_disponibile.index(stare_curenta) if stare_curenta in stari_disponibile else 0
                 mm_stare = st.selectbox("Schimbă Starea Echipamentului", options=stari_disponibile, index=idx_stare, key=f"mm_stare_{m['id']}")
                 
