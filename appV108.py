@@ -328,16 +328,19 @@ def genereaza_pdf(data):
         pdf.multi_cell(0, 5, curata_text(continut or "Nespecificat"))
         pdf.ln(4)
 
-    # Pregătire Simptom (cu codul de eroare inclus, dacă există)
+    # Pregătire Simptom & Cod Eroare (pe primul rând, fără paranteze)
     simptom_text = data['simptom'] or ""
     cod_err_val = data.get('cod_eroare', 'Niciunul')
+    
     if cod_err_val and cod_err_val != "Niciunul":
-        simptom_text = f"{simptom_text} (Cod eroare / erori: {cod_err_val})"
+        simptom_complet = f"Cod eroare: {cod_err_val} - {simptom_text}" if simptom_text else f"Cod eroare: {cod_err_val}"
+    else:
+        simptom_complet = simptom_text
 
     defect_text = data['defect'] or ""
 
-    # Secțiune Simptom Inițial / Defect cu defectul pe rând nou
-    adauga_sectiune("Simptom Initial / Defect", f"{simptom_text}\n{defect_text}")
+    # Secțiunea Simptom / Defect (simptomul + codul de eroare pe primul rând, defectul pe rândul nou)
+    adauga_sectiune("Simptom Initial / Defect", f"{simptom_complet}\n{defect_text}")
     adauga_sectiune("Solutie / Lucrari Executate", data['solutie'])
 
     pdf.set_font('Helvetica', 'B', 10)
@@ -934,88 +937,4 @@ with tab_masini:
                 mm_stare = st.selectbox("Schimbă Starea Echipamentului", options=stari_disponibile, index=idx_stare, key=f"mm_stare_{m['id']}")
                 
                 mm_data_oprire = st.date_input("Data Început Oprire / Mentenanță", value=datetime.strptime(str(m['data_inceput_oprire']), "%Y-%m-%d").date() if m.get('data_inceput_oprire') else date.today(), key=f"mm_d_op_{m['id']}")
-                mm_motiv = st.text_input("Motiv Oprire / Detalii", value=m['motiv_oprire'] or "", key=f"mm_mot_{m['id']}")
-                
-                mm_sub = st.text_input("Subansambluri", value=m['subansambluri'] or "", key=f"mm_sub_{m['id']}")
-                
-                col_mm1, col_mm2 = st.columns(2)
-                with col_mm1:
-                    if st.form_submit_button("🔄 Actualizează Stare & Detalii"):
-                        with db_cursor() as c:
-                            c.execute("""
-                                UPDATE masini 
-                                SET denumire=%s, stare_utilaj=%s, data_inceput_oprire=%s, motiv_oprire=%s, subansambluri=%s
-                                WHERE id=%s
-                            """, (mm_den, mm_stare, str(mm_data_oprire) if mm_stare != "Activă" else None, mm_motiv if mm_stare != "Activă" else None, mm_sub, m['id']))
-                        get_masini.clear()
-                        st.success("Starea mașinii a fost actualizată!")
-                        st.rerun()
-                with col_mm2:
-                    if st.form_submit_button("🗑️ Șterge Mașina"):
-                        with db_cursor() as c:
-                            c.execute("DELETE FROM masini WHERE id=%s", (m['id'],))
-                        get_masini.clear()
-                        st.success("Mașina a fost ștearsă!")
-                        st.rerun()
-
-# ------------------------------------------------------------------------------
-# TAB 5: Piese
-# ------------------------------------------------------------------------------
-with tab_piese:
-    st.subheader("🔧 Gestiune Piese de Schimb și Catalog")
-    
-    with st.expander("➕ Adaugă Piesă Nouă în Catalog", expanded=True):
-        masini_existente_piese = [m['denumire'] for m in get_masini()]
-        with st.form("form_adaugare_piesa", clear_on_submit=True):
-            col_p1, col_p2 = st.columns(2)
-            with col_p1:
-                p_denumire = st.text_input("Denumire Piesă *")
-                p_cod_prod = st.text_input("Cod Producător")
-                p_cod_com = st.text_input("Cod Comercial / SKU")
-            with col_p2:
-                p_masina = st.selectbox("Mașină Montaj", options=["General"] + masini_existente_piese)
-                p_subansamblu = st.text_input("Subansamblu (opțional)")
-                
-            if st.form_submit_button("💾 Salvează Piesa în Catalog"):
-                if p_denumire:
-                    with db_cursor() as c:
-                        c.execute("""
-                            INSERT INTO piese (denumire, cod_producator, cod_comercial, masina_montaj, subansamblu)
-                            VALUES (%s, %s, %s, %s, %s)
-                        """, (p_denumire, p_cod_prod, p_cod_com, p_masina, p_subansamblu))
-                    get_piese.clear()
-                    st.success(f"Piesa **{p_denumire}** a fost adaugată cu succes în catalog!")
-                    st.rerun()
-                else:
-                    st.error("Te rugăm să introduci denumirea piesei.")
-
-    st.markdown("---")
-    st.subheader("📋 Catalog Piese Existente")
-    
-    masini_existente = [m['denumire'] for m in get_masini()]
-    select_masina_unica = st.selectbox("Filtrează după Mașină", options=["Toate mașinile / General"] + masini_existente, key="sel_piese_t5")
-    
-    piese_filtrate_tabel = get_piese_filtrate(select_masina_unica)
-    if piese_filtrate_tabel:
-        df_piese_catalog = pd.DataFrame(piese_filtrate_tabel)
-        df_piese_catalog.columns = ["ID", "Denumire", "Cod Producător", "Cod Comercial", "Mașină Montaj", "Subansamblu"]
-        st.dataframe(df_piese_catalog, use_container_width=True)
-    else:
-        st.info("Nu există piese înregistrate pentru filtrul selectat.")
-
-# ------------------------------------------------------------------------------
-# TAB 6: Firme
-# ------------------------------------------------------------------------------
-with tab_firme:
-    st.subheader("📇 Gestiune Firme și Persoane de Contact")
-    firme_db = get_firme()
-    for f in firme_db:
-        st.write(f"- **{f['nume_firma']}** (Contact: {f['nume_persoana']} | Tel: {f['telefon']})")
-
-# ------------------------------------------------------------------------------
-# TAB 7: Setări
-# ------------------------------------------------------------------------------
-with tab_setari:
-    st.subheader("⚙️ Setări Aplicație & Conectare")
-    current_setari = get_setari()
-    st.text(f"Firma Curentă Setată: {current_setari['nume_firma_mea']}")
+                mm_motiv = st.text_input("Motiv Oprire / Detalii", value=m['motiv_oprire'] or "", key=f"mm_mot_{
