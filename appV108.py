@@ -329,9 +329,6 @@ def genereaza_pdf(data):
         pdf.ln(4)
 
     # Construim structura clar separată pe rânduri:
-    # 1. Cod eroare (dacă există) pe primul rând dedicat
-    # 2. Simptomul reclamat
-    # 3. Defectul constatat pe un rând nou dedesubt
     linii_simptom_defect = []
     
     cod_err_val = data.get('cod_eroare', 'Niciunul')
@@ -349,87 +346,6 @@ def genereaza_pdf(data):
     continut_simptom_defect = "\n".join(linii_simptom_defect)
 
     adauga_sectiune("Simptom Initial / Defect", continut_simptom_defect)
-    adauga_sectiune("Solutie / Lucrari Executate", data['solutie'])
-
-    pdf.set_font('Helvetica', 'B', 10)
-    pdf.set_text_color(*SECONDARY)
-    pdf.cell(0, 6, curata_text("TABEL PIESE (UTILIZATE / INLOCUITE / NECESARE / COMANDAT)"), 0, 1)
-    pdf.set_draw_color(*SECONDARY)
-    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-    pdf.ln(2)
-    
-    pdf.set_font('Helvetica', 'B', 9)
-    pdf.cell(100, 6, curata_text("Denumire Piesa"), 1, 0, 'C', fill=True)
-    pdf.cell(40, 6, curata_text("Cantitate"), 1, 0, 'C', fill=True)
-    pdf.cell(50, 6, curata_text("Tip / Status"), 1, 1, 'C', fill=True)
-    
-    pdf.set_font('Helvetica', '', 9)
-    piese_list = data.get('piese_json', [])
-    if piese_list:
-        for p in piese_list:
-            if isinstance(p, dict):
-                nume_p = p.get('piesa') or p.get('Piesa') or ''
-                cant_p = p.get('cantitate') if p.get('cantitate') is not None else p.get('Cantitate', 1)
-                tip_p = p.get('tip') or p.get('Tip') or ''
-                
-                pdf.cell(100, 6, curata_text(str(nume_p)), 1, 0, 'L')
-                pdf.cell(40, 6, str(cant_p), 1, 0, 'C')
-                pdf.cell(50, 6, curata_text(str(tip_p)), 1, 1, 'C')
-            else:
-                pdf.cell(100, 6, curata_text(str(p)), 1, 0, 'L')
-                pdf.cell(40, 6, "1", 1, 0, 'C')
-                pdf.cell(50, 6, curata_text("Utilizata"), 1, 1, 'C')
-    else:
-        pdf.cell(190, 6, curata_text("Nicio piesa inregistrata"), 1, 1, 'C')
-    pdf.ln(4)
-
-    if data['optimizari']:
-        adauga_sectiune("Recomandari Tehnice & Siguranta", data['optimizari'])
-
-    if pdf.get_y() > 235:
-        pdf.add_page()
-
-    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-    pdf.ln(4)
-    pdf.set_font('Helvetica', 'B', 9)
-    pdf.set_text_color(*PRIMARY)
-    pdf.cell(95, 5, curata_text("EFECTUAT DE (TEHNICIAN)"), 0, 0, 'C')
-    pdf.cell(95, 5, curata_text("VERIFICAT / RECEPTIONAT DE"), 0, 1, 'C')
-    pdf.set_font('Helvetica', '', 9)
-    pdf.set_text_color(0, 0, 0)
-    pdf.cell(95, 5, curata_text(f"Nume: {data['tehnician'] or 'Tehnician Nexus'}"), 0, 0, 'C')
-    pdf.cell(95, 5, curata_text(f"Nume: {data['verificator'] or 'Client'}"), 0, 1, 'C')
-    pdf.ln(8)
-    pdf.cell(95, 5, curata_text("Semnatura: ___________________"), 0, 0, 'C')
-    pdf.cell(95, 5, curata_text("Semnatura: ___________________"), 0, 1, 'C')
-
-    output = pdf.output(dest='S') if hasattr(pdf, 'output') else pdf.output()
-    return output if isinstance(output, bytes) else output.encode('latin1', errors='ignore')
-    def adauga_sectiune(titlu, continut):
-        pdf.set_font('Helvetica', 'B', 10)
-        pdf.set_text_color(*SECONDARY)
-        pdf.cell(0, 6, curata_text(titlu.upper()), 0, 1)
-        pdf.set_draw_color(*SECONDARY)
-        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-        pdf.ln(2)
-        pdf.set_font('Helvetica', '', 9)
-        pdf.set_text_color(0, 0, 0)
-        pdf.multi_cell(0, 5, curata_text(continut or "Nespecificat"))
-        pdf.ln(4)
-
-    # Pregătire Simptom & Cod Eroare (pe primul rând, fără paranteze)
-    simptom_text = data['simptom'] or ""
-    cod_err_val = data.get('cod_eroare', 'Niciunul')
-    
-    if cod_err_val and cod_err_val != "Niciunul":
-        simptom_complet = f"Cod eroare: {cod_err_val} - {simptom_text}" if simptom_text else f"Cod eroare: {cod_err_val}"
-    else:
-        simptom_complet = simptom_text
-
-    defect_text = data['defect'] or ""
-
-    # Secțiunea Simptom / Defect (simptomul + codul de eroare pe primul rând, defectul pe rândul nou)
-    adauga_sectiune("Simptom Initial / Defect", f"{simptom_complet}\n{defect_text}")
     adauga_sectiune("Solutie / Lucrari Executate", data['solutie'])
 
     pdf.set_font('Helvetica', 'B', 10)
@@ -664,7 +580,17 @@ with tab_activitati:
                 if match_m['erori']:
                     erori_masina = [e.strip() for e in match_m['erori'].split(",")]
         
-        sel_subansamblu = st.selectbox("3. Alege sau scrie Subansamblul", options=subansamblu_list if subansamblu_list else ["General"], key="act_subansamblu_tab1")
+        # SOLUȚIA 1 IMPLEMENTATĂ: Câmp text liber care afișează sugestiile ca indiciu
+        st.markdown("3. **Subansamblu / Componentă**")
+        if subansamblu_list:
+            st.caption(f"💡 Sugestii disponibile: {', '.join(subansamblu_list)}")
+        
+        sel_subansamblu = st.text_input(
+            "Subansamblu", 
+            value="General" if not subansamblu_list else subansamblu_list[0], 
+            key="act_subansamblu_tab1",
+            label_visibility="collapsed"
+        )
         
         c1, c2 = st.columns(2)
         with c1:
