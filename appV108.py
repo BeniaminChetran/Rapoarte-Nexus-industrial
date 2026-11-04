@@ -579,10 +579,8 @@ with tab_activitati:
             if st.button("💾 Salvează Activitatea în DB", type="primary", key="btn_salveaza_activitate_tab1"):
                 piese_valide = edited_df.dropna(subset=["Piesa"]).to_dict(orient="records")
                 
-                # Verificăm dacă există piese de comandat sau necesare
                 are_piese_necesare = any(p.get("Tip") in ["Necesara", "De Comandat"] for p in piese_valide)
 
-                # Stabilire stare automată mașină pe baza ultimului raport
                 if stare_fin == "Funcțională":
                     stare_calculata_masina = "Activă"
                 elif stare_fin in ["Oprită / Necesar piese", "În testare"] and are_piese_necesare:
@@ -599,7 +597,6 @@ with tab_activitati:
                     res_ins = c.fetchone()
                     rid_nou = res_ins['id'] if res_ins else None
 
-                    # Actualizare automată stare mașină în tabelul masini
                     if stare_calculata_masina == "Activă":
                         c.execute("""
                             UPDATE masini SET stare_utilaj = %s, data_inceput_oprire = NULL, motiv_oprire = NULL 
@@ -650,7 +647,7 @@ with tab_activitati:
                 st.rerun()
 
 # ------------------------------------------------------------------------------
-# TAB 2: Istoric Intervenții
+# TAB 2: Istoric Intervenții (MODIFICAT: Vizualizare completă și editare avansată)
 # ------------------------------------------------------------------------------
 with tab_istoric:
     st.subheader("📋 Istoric Intervenții & Căutare Avansată")
@@ -671,7 +668,7 @@ with tab_istoric:
             foloseste_data = st.checkbox("Filtrează după o dată specifică", value=False, key="filtru_ist_check_data_tab2")
             filtru_data = st.date_input("Data intervenție", value=date.today(), key="filtru_ist_data_tab2") if foloseste_data else None
 
-    query_str = "SELECT id, firma, masina, data_creare FROM reparatii WHERE 1=1"
+    query_str = "SELECT id, firma, masina, data_creare, titlu FROM reparatii WHERE 1=1"
     query_params = []
 
     if filtru_firma != "Toate firmele":
@@ -695,9 +692,9 @@ with tab_istoric:
     st.markdown(f"**Rezultate găsite:** {len(lista_reparatii_sumar)} rapoarte")
     
     if lista_reparatii_sumar:
-        opțiuni_select_raport = {f"Raport #{r['id']} | {r['firma']} - {r['masina']} ({str(r['data_creare'])[:10]})": r['id'] for r in lista_reparatii_sumar}
+        opțiuni_select_raport = {f"Raport #{r['id']} | {r['firma']} - {r['masina']} | {r['titlu'] or 'Fără titlu'} ({str(r['data_creare'])[:10]})": r['id'] for r in lista_reparatii_sumar}
         
-        raport_ales_str = st.selectbox("Selectează Raportul dorit pentru Vizualizare / Modificare", options=list(opțiuni_select_raport.keys()), key="select_raport_istoric_tab2")
+        raport_ales_str = st.selectbox("Selectează Raportul dorit pentru Vizualizare / Modificare Completă", options=list(opțiuni_select_raport.keys()), key="select_raport_istoric_tab2")
         selected_rid = opțiuni_select_raport[raport_ales_str]
         
         with db_cursor() as cur_full:
@@ -723,43 +720,73 @@ with tab_istoric:
             rdata = full_rep['data_creare']
             rtip_int = full_rep.get('tip_interventie') or "reparatie"
             
-            with st.form(f"form_mod_istoric_{rid}"):
-                st.markdown(f"##### ✏️ Modificare Raport #{rid}")
-                em_titlu = st.text_input("Titlu Lucrare", value=rtit or "", key=f"em_tit_{rid}")
-                em_simptom = st.text_area("Simptom Inițial", value=rsimp or "", key=f"em_simp_{rid}")
+            st.markdown(f"---")
+            st.markdown(f"#### ✏️ Vizualizare și Modificare Detaliată - Raport #{rid}")
+            
+            with st.form(f"form_mod_istoric_complet_{rid}"):
+                mc1, mc2 = st.columns(2)
+                with mc1:
+                    em_titlu = st.text_input("Titlu Lucrare", value=rtit or "", key=f"em_tit_{rid}")
+                    em_firma = st.text_input("Client / Firmă", value=rfirma or "", key=f"em_firma_{rid}")
+                    em_masina = st.text_input("Mașină / Echipament", value=rmas or "", key=f"em_mas_{rid}")
+                    em_subansamblu = st.text_input("Subansamblu", value=rsub or "", key=f"em_sub_{rid}")
+                    em_simptom = st.text_area("Simptom Inițial Reclamat", value=rsimp or "", key=f"em_simp_{rid}")
+                with mc2:
+                    em_tip_int = st.selectbox("Tip Intervenție", options=["reparatie", "diagnostic", "consultanta"], index=["reparatie", "diagnostic", "consultanta"].index(rtip_int) if rtip_int in ["reparatie", "diagnostic", "consultanta"] else 0, key=f"em_tipint_{rid}")
+                    em_cod_eroare = st.text_input("Cod Eroare", value=rcod_err or "", key=f"em_coder_{rid}")
+                    em_durata = st.number_input("Durată Intervenție (minute)", value=int(rdurata) if rdurata else 60, step=15, key=f"em_dur_{rid}")
+                    stari_opt_list = ["Funcțională", "În testare", "Oprită / Necesar piese"]
+                    em_stare = st.selectbox("Stare Finală Echipament", options=stari_opt_list, index=stari_opt_list.index(rstare) if rstare in stari_opt_list else 0, key=f"em_sta_{rid}")
+                
                 em_defect = st.text_area("Defect Constatat", value=rdef or "", key=f"em_def_{rid}")
                 em_solutie = st.text_area("Soluție / Lucrări Executate", value=rsol or "", key=f"em_sol_{rid}")
-                
-                c_e1, c_e2 = st.columns(2)
-                with c_e1:
-                    em_durata = st.number_input("Durată (minute)", value=int(rdurata) if rdurata else 60, key=f"em_dur_{rid}")
-                    em_stare = st.selectbox("Stare Finală", ["Funcțională", "În testare", "Oprită / Necesar piese"], index=0 if rstare=="Funcțională" else 1, key=f"em_sta_{rid}")
-                with c_e2:
-                    em_tech = st.text_input("Tehnician", value=rtech or "", key=f"em_tec_{rid}")
-                    em_verif = st.text_input("Verificator / Client", value=rverif or "", key=f"em_ver_{rid}")
+                em_recomandari = st.text_area("Recomandări Tehnice & Siguranță", value=ropt or "", key=f"em_rec_{rid}")
 
-                if st.form_submit_button("💾 Salvează Modificările Raportului"):
+                st.markdown("##### 👥 Responsabili")
+                ec_t1, ec_t2 = st.columns(2)
+                em_tech = ec_t1.text_input("Tehnician", value=rtech or "", key=f"em_tec_{rid}")
+                em_verif = ec_t2.text_input("Verificator / Client", value=rverif or "", key=f"em_ver_{rid}")
+
+                if st.form_submit_button("💾 Salvează Toate Modificările Raportului", type="primary"):
                     with db_cursor() as c:
                         c.execute("""
                             UPDATE reparatii 
-                            SET titlu = %s, simptom = %s, defect = %s, solutie = %s, durata = %s, stare_finala = %s, tehnician = %s, verificator = %s
+                            SET titlu = %s, firma = %s, masina = %s, subansamblu = %s, simptom = %s, 
+                                tip_interventie = %s, cod_eroare = %s, durata = %s, stare_finala = %s, 
+                                defect = %s, solutie = %s, optimizari = %s, tehnician = %s, verificator = %s
                             WHERE id = %s
-                        """, (em_titlu, em_simptom, em_defect, em_solutie, em_durata, em_stare, em_tech, em_verif, rid))
-                    st.success(f"Raportul #{rid} a fost actualizat!")
+                        """, (em_titlu, em_firma, em_masina, em_subansamblu, em_simptom, em_tip_int, 
+                              em_cod_eroare, em_durata, em_stare, em_defect, em_solutie, 
+                              em_recomandari, em_tech, em_verif, rid))
+                    st.success(f"Modificările pentru Raportul #{rid} au fost salvate cu succes!")
                     st.rerun()
 
+            st.markdown("##### 📦 Piese înregistrate în acest raport:")
             piese_data = json.loads(rpiese_json) if rpiese_json else []
+            if piese_data:
+                df_piese_rap = pd.DataFrame(piese_data)
+                st.dataframe(df_piese_rap, use_container_width=True)
+            else:
+                st.info("Nicio piesă atașată acestui raport.")
+
+            st.markdown("---")
             date_pdf = {
                 "id": rid, "client": rfirma, "masina": rmas, "subansamblu": rsub, "durata": rdurata,
                 "cod_eroare": rcod_err, "stare_finala": rstare, "piese_json": piese_data,
                 "titlu": rtit, "simptom": rsimp, "defect": rdef, "solutie": rsol, "optimizari": ropt,
                 "tehnician": rtech, "verificator": rverif, "data": rdata, "tip_interventie": rtip_int
             }
-            if st.button(f"Generează PDF pentru Raport #{rid}", key=f"btn_pdf_{rid}"):
+            if st.button(f"📥 Generează și Descarcă PDF pentru Raport #{rid}", key=f"btn_pdf_{rid}"):
                 pdf_b = genereaza_pdf(date_pdf)
-                st.download_button(label=f"📥 Descarcă PDF Raport #{rid}", data=pdf_b, file_name=f"Raport_{rid}.pdf", mime="application/pdf", key=f"dl_{rid}")
+                st.download_button(
+                    label=f"Click aici pentru a descărca PDF_Raport_{rid}.pdf", 
+                    data=pdf_b, 
+                    file_name=f"Raport_{rid}.pdf", 
+                    mime="application/pdf", 
+                    key=f"dl_{rid}"
+                )
     else:
-        st.info("Nu există rapoarte înregistrate.")
+        st.info("Nu există rapoarte înregistrate conform filtrelor selectate.")
 
 # ------------------------------------------------------------------------------
 # TAB 3: Predicții & Mentenanță
@@ -801,7 +828,6 @@ with tab_masini:
             m_tip = st.text_input("Tip Mașină")
             m_serie = st.text_input("Număr Serie")
             m_an = st.number_input("An Fabricație", min_value=1950, max_value=2050, value=2020)
-            # TITLU REVIZUIT conform cerinței
             m_stare_noua = st.selectbox("Stare actuală echipament", ["Activă", "În așteptare piese", "Nefuncțională / Oprită", "Oprită pentru întreținere"])
         with c2:
             m_sub = st.text_input("Subansambluri (separate prin virgulă)")
@@ -880,13 +906,49 @@ with tab_masini:
                         st.rerun()
 
 # ------------------------------------------------------------------------------
-# TAB 5: Piese
+# TAB 5: Piese (MODIFICAT: Adăugare piese noi și vizualizare catalog)
 # ------------------------------------------------------------------------------
 with tab_piese:
-    st.subheader("🔧 Gestiune Piese de Schimb")
+    st.subheader("🔧 Gestiune Piese de Schimb și Catalog")
+    
+    with st.expander("➕ Adaugă Piesă Nouă în Catalog", expanded=True):
+        masini_existente_piese = [m['denumire'] for m in get_masini()]
+        with st.form("form_adaugare_piesa", clear_on_submit=True):
+            col_p1, col_p2 = st.columns(2)
+            with col_p1:
+                p_denumire = st.text_input("Denumire Piesă *")
+                p_cod_prod = st.text_input("Cod Producător")
+                p_cod_com = st.text_input("Cod Comercial / SKU")
+            with col_p2:
+                p_masina = st.selectbox("Mașină Montaj", options=["General"] + masini_existente_piese)
+                p_subansamblu = st.text_input("Subansamblu (opțional)")
+                
+            if st.form_submit_button("💾 Salvează Piesa în Catalog"):
+                if p_denumire:
+                    with db_cursor() as c:
+                        c.execute("""
+                            INSERT INTO piese (denumire, cod_producator, cod_comercial, masina_montaj, subansamblu)
+                            VALUES (%s, %s, %s, %s, %s)
+                        """, (p_denumire, p_cod_prod, p_cod_com, p_masina, p_subansamblu))
+                    get_piese.clear()
+                    st.success(f"Piesa **{p_denumire}** a fost adaugată cu succes în catalog!")
+                    st.rerun()
+                else:
+                    st.error("Te rugăm să introduci denumirea piesei.")
+
+    st.markdown("---")
+    st.subheader("📋 Catalog Piese Existente")
+    
     masini_existente = [m['denumire'] for m in get_masini()]
-    select_masina_unica = st.selectbox("Selectează Mașina", options=["Toate mașinile / General"] + masini_existente, key="sel_piese_t5")
-    st.info("Folosește acest tab pentru catalogul de piese.")
+    select_masina_unica = st.selectbox("Filtrează după Mașină", options=["Toate mașinile / General"] + masini_existente, key="sel_piese_t5")
+    
+    piese_filtrate_tabel = get_piese_filtrate(select_masina_unica)
+    if piese_filtrate_tabel:
+        df_piese_catalog = pd.DataFrame(piese_filtrate_tabel)
+        df_piese_catalog.columns = ["ID", "Denumire", "Cod Producător", "Cod Comercial", "Mașină Montaj", "Subansamblu"]
+        st.dataframe(df_piese_catalog, use_container_width=True)
+    else:
+        st.info("Nu există piese înregistrate pentru filtrul selectat.")
 
 # ------------------------------------------------------------------------------
 # TAB 6: Firme
