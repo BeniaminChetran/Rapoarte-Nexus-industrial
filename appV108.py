@@ -294,7 +294,7 @@ def genereaza_pdf(data):
     detalii_masina_str = f"Tip: {data.get('tip_masina', 'N/A')} | Serie: {data.get('serie', 'N/A')} | An: {data.get('an_fabricatie', 'N/A')}"
     pdf.cell(90, 5, curata_text(detalii_masina_str), 0, 1)
 
-    # Rândul 3: Gol vs Subansamblu
+    # Rândul 3: Cod Eroare vs Subansamblu
     pdf.set_x(12)
     pdf.cell(90, 5, curata_text(f"Cod Eroare: {data.get('cod_eroare','N/A')}"), 0, 0)
     pdf.cell(90, 5, curata_text(f"Subansamblul: {data.get('subansamblu','General')}"), 0, 1)
@@ -524,7 +524,7 @@ with tab_dashboard:
 # TAB 1: Activități Zilnice
 # ------------------------------------------------------------------------------
 with tab_activitati:
-    st.subheader("📝 Activități Zilnice & Raport Intervenție Tehnică")
+    st.subheader("📝 Activități Zilnice & Raport Intervenție Tehnic")
     firme_db_all = get_firme()
     firme_dict_obj = {f['nume_firma']: f for f in firme_db_all}
     firme_activ = list(firme_dict_obj.keys())
@@ -544,7 +544,7 @@ with tab_activitati:
         
         subansamblu_list = []
         erori_masina = []
-         masina_selectata_info = None
+        masina_selectata_info = None
         if masini_firma_db and sel_masina != "Nicio mașină":
             match_m = next((m for m in masini_firma_db if m['denumire'] == sel_masina), None)
             if match_m:
@@ -746,7 +746,6 @@ with tab_istoric:
             rdata = full_rep['data_creare']
             rtip_int = full_rep.get('tip_interventie') or "reparatie"
             
-            # Preluăm datele suplimentare ale mașinii pentru PDF din tabelul masini
             with db_cursor() as cur_m_info:
                 cur_m_info.execute("SELECT tip_masina, serie, an_fabricatie FROM masini WHERE denumire = %s LIMIT 1", (rmas,))
                 m_info_res = cur_m_info.fetchone()
