@@ -265,10 +265,20 @@ def genereaza_pdf(data):
     pdf.cell(0, 4, curata_text(f"Adresă: {setari_pdf['adresa_mea']} | Bancă: {setari_pdf['banca_mea']} | IBAN: {setari_pdf['iban_mea']} | SWIFT: {setari_pdf['swep_mea']}"), 0, 1, 'L')
     pdf.ln(6)
 
-    pdf.set_font('Helvetica', 'B', 11)
+    # Rândul cu Nr. Înregistrare (stânga), Titlu Lucrare (centru) și Data (dreapta)
+    pdf.set_font('Helvetica', 'B', 10)
     pdf.set_text_color(*PRIMARY)
-    pdf.cell(100, 7, curata_text(f"Nr. Inregistrare: #{data['id']}"), 0, 0)
-    pdf.cell(90, 7, curata_text(f"Data: {str(data['data'])[:10]}"), 0, 1, 'R')
+    
+    y_start = pdf.get_y()
+    pdf.set_xy(10, y_start)
+    pdf.cell(50, 7, curata_text(f"Nr. Inreg: #{data['id']}"), 0, 0, 'L')
+    
+    pdf.set_xy(60, y_start)
+    pdf.cell(90, 7, curata_text(data.get('titlu', '')), 0, 0, 'C')
+    
+    pdf.set_xy(150, y_start)
+    pdf.cell(50, 7, curata_text(f"Data: {str(data['data'])[:10]}"), 0, 1, 'R')
+    
     pdf.line(10, pdf.get_y() + 2, 200, pdf.get_y() + 2)
     pdf.ln(6)
 
@@ -318,8 +328,16 @@ def genereaza_pdf(data):
         pdf.multi_cell(0, 5, curata_text(continut or "Nespecificat"))
         pdf.ln(4)
 
-    adauga_sectiune("Titlu Lucrare", data['titlu'])
-    adauga_sectiune("Simptom Initial / Defect", f"{data['simptom']} / {data['defect']}")
+    # Pregătire Simptom (cu codul de eroare inclus, dacă există)
+    simptom_text = data['simptom'] or ""
+    cod_err_val = data.get('cod_eroare', 'Niciunul')
+    if cod_err_val and cod_err_val != "Niciunul":
+        simptom_text = f"{simptom_text} (Cod eroare / erori: {cod_err_val})"
+
+    defect_text = data['defect'] or ""
+
+    # Secțiune Simptom Inițial / Defect cu defectul pe rând nou
+    adauga_sectiune("Simptom Initial / Defect", f"{simptom_text}\n{defect_text}")
     adauga_sectiune("Solutie / Lucrari Executate", data['solutie'])
 
     pdf.set_font('Helvetica', 'B', 10)
@@ -524,7 +542,7 @@ with tab_dashboard:
 # TAB 1: Activități Zilnice
 # ------------------------------------------------------------------------------
 with tab_activitati:
-    st.subheader("📝 Activități Zilnice & Raport Intervenție Tehnic")
+    st.subheader("📝 Activități Zilnice & Raport Intervenție Tehnică")
     firme_db_all = get_firme()
     firme_dict_obj = {f['nume_firma']: f for f in firme_db_all}
     firme_activ = list(firme_dict_obj.keys())
