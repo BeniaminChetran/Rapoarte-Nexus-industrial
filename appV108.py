@@ -96,7 +96,7 @@ def get_masini():
 def get_masini_firma(firma_id):
     with db_cursor() as c:
         c.execute("""
-            SELECT m.id, m.denumire, m.subansambluri, m.erori, m.tip_masina, m.stare_utilaj 
+            SELECT m.id, m.denumire, m.subansambluri, m.erori, m.tip_masina, m.serie, m.an_fabricatie, m.stare_utilaj 
             FROM masini m
             JOIN firme f ON m.firma_id = f.id
             WHERE f.id = %s 
@@ -273,7 +273,7 @@ def genereaza_pdf(data):
     pdf.ln(6)
 
     pdf.set_fill_color(*BG_LIGHT)
-    pdf.rect(10, pdf.get_y(), 190, 32, 'F')
+    pdf.rect(10, pdf.get_y(), 190, 36, 'F')
     pdf.set_xy(12, pdf.get_y() + 2)
     pdf.set_font('Helvetica', 'B', 10)
     pdf.set_text_color(*PRIMARY)
@@ -282,12 +282,24 @@ def genereaza_pdf(data):
     
     pdf.set_font('Helvetica', '', 9)
     pdf.set_text_color(0, 0, 0)
+    
+    # Rândul 1: Client vs Echipament (Denumire)
     pdf.set_x(12)
     pdf.cell(90, 5, curata_text(f"Client: {data['client'] or 'Nespecificat'}"), 0, 0)
-    pdf.cell(90, 5, curata_text(f"Echipament: {data['masina']} ({data.get('subansamblu','')})"), 0, 1)
+    pdf.cell(90, 5, curata_text(f"Echipament: {data['masina']}"), 0, 1)
+
+    # Rândul 2: Durata vs Detalii Echipament (Tip, Serie, An Fabricație)
     pdf.set_x(12)
     pdf.cell(90, 5, curata_text(f"Durata: {data['durata']} minute ({data.get('tip_interventie', 'N/A')})"), 0, 0)
-    pdf.cell(90, 5, curata_text(f"Cod Eroare: {data.get('cod_eroare','N/A')}"), 0, 1)
+    detalii_masina_str = f"Tip: {data.get('tip_masina', 'N/A')} | Serie: {data.get('serie', 'N/A')} | An: {data.get('an_fabricatie', 'N/A')}"
+    pdf.cell(90, 5, curata_text(detalii_masina_str), 0, 1)
+
+    # Rândul 3: Gol vs Subansamblu
+    pdf.set_x(12)
+    pdf.cell(90, 5, curata_text(f"Cod Eroare: {data.get('cod_eroare','N/A')}"), 0, 0)
+    pdf.cell(90, 5, curata_text(f"Subansamblul: {data.get('subansamblu','General')}"), 0, 1)
+
+    # Rândul 4: Stare Finală
     pdf.set_x(12)
     pdf.cell(90, 5, "", 0, 0)
     pdf.set_font('Helvetica', 'B', 9)
@@ -532,9 +544,11 @@ with tab_activitati:
         
         subansamblu_list = []
         erori_masina = []
+         masina_selectata_info = None
         if masini_firma_db and sel_masina != "Nicio mașină":
             match_m = next((m for m in masini_firma_db if m['denumire'] == sel_masina), None)
             if match_m:
+                masina_selectata_info = match_m
                 if match_m['subansambluri']:
                     subansamblu_list = [s.strip() for s in match_m['subansambluri'].split(",")]
                 if match_m['erori']:
@@ -625,6 +639,9 @@ with tab_activitati:
                     date_pdf_pre = {
                         "id": rid_nou, "client": sel_firma, "masina": sel_masina, "subansamblu": sel_subansamblu,
                         "durata": durata_min, "cod_eroare": cod_eroare, "stare_finala": stare_fin,
+                        "tip_masina": masina_selectata_info.get('tip_masina', '') if masina_selectata_info else '',
+                        "serie": masina_selectata_info.get('serie', '') if masina_selectata_info else '',
+                        "an_fabricatie": masina_selectata_info.get('an_fabricatie', '') if masina_selectata_info else '',
                         "piese_json": [{"piesa": p.get("Piesa"), "cantitate": p.get("Cantitate"), "tip": p.get("Tip")} for p in piese_valide],
                         "titlu": titlu_lucrare, "simptom": simptom, "defect": defect, "solutie": solutie,
                         "optimizari": optimizari, "tehnician": tehnician_nume, "verificator": verificator_nume, "data": datetime.now(),
@@ -729,6 +746,15 @@ with tab_istoric:
             rdata = full_rep['data_creare']
             rtip_int = full_rep.get('tip_interventie') or "reparatie"
             
+            # Preluăm datele suplimentare ale mașinii pentru PDF din tabelul masini
+            with db_cursor() as cur_m_info:
+                cur_m_info.execute("SELECT tip_masina, serie, an_fabricatie FROM masini WHERE denumire = %s LIMIT 1", (rmas,))
+                m_info_res = cur_m_info.fetchone()
+            
+            m_tip_val = m_info_res['tip_masina'] if m_info_res else ''
+            m_serie_val = m_info_res['serie'] if m_info_res else ''
+            m_an_val = m_info_res['an_fabricatie'] if m_info_res else ''
+            
             st.markdown(f"---")
             st.markdown(f"#### ✏️ Vizualizare și Modificare Detaliată - Raport #{rid}")
             
@@ -782,6 +808,7 @@ with tab_istoric:
             date_pdf = {
                 "id": rid, "client": rfirma, "masina": rmas, "subansamblu": rsub, "durata": rdurata,
                 "cod_eroare": rcod_err, "stare_finala": rstare, "piese_json": piese_data,
+                "tip_masina": m_tip_val, "serie": m_serie_val, "an_fabricatie": m_an_val,
                 "titlu": rtit, "simptom": rsimp, "defect": rdef, "solutie": rsol, "optimizari": ropt,
                 "tehnician": rtech, "verificator": rverif, "data": rdata, "tip_interventie": rtip_int
             }
