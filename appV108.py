@@ -18,9 +18,6 @@ import psycopg2.extras
 from psycopg2.pool import ThreadedConnectionPool
 import pandas as pd
 import plotly.express as px
-import requests
-import ssl
-from requests.adapters import HTTPAdapter
 
 load_dotenv()
 
@@ -63,68 +60,7 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------------------------
-# 3. Adaptor SSL & Funcție Căutare CUI ANAF
-# ------------------------------------------------------------------------------
-class LegacySSLAdapter(HTTPAdapter):
-    def init_poolmanager(self, *args, **kwargs):
-        context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
-        context.set_ciphers('DEFAULT@SECLEVEL=1')
-        kwargs['ssl_context'] = context
-        return super().init_poolmanager(*args, **kwargs)
-
-
-def obtine_date_anaf(cui_input):
-    # Curățăm CUI-ul (păstrăm doar cifrele)
-    cui_curat = ''.join(filter(str.isdigit, str(cui_input)))
-    
-    if not cui_curat or len(cui_curat) < 2 or len(cui_curat) > 10:
-        return None, "Introduceți un CUI valid!"
-    
-    # Endpoint stabil de la ANAF v6
-    url = "https://webservicesp.anaf.ro/PlatitorTvaRest/api/v6/ws/tva"
-    payload = [{"cui": int(cui_curat), "data": date.today().strftime("%Y-%m-%d")}]
-    headers = {
-        'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-    }
-    
-    try:
-        # Folosim requests.post direct
-        response = requests.post(url, json=payload, headers=headers, timeout=8, verify=False)
-        
-        if response.status_code == 200:
-            res_data = response.json()
-            found = res_data.get("found", [])
-            if found:
-                date_f = found[0]
-                date_gen = date_f.get("date_generale", {})
-                adresa_sediu = date_f.get("adresa_sediu_social", {})
-                
-                strada = adresa_sediu.get("sden_strada", "")
-                nr = adresa_sediu.get("sden_numar", "")
-                loc = adresa_sediu.get("sden_localitate", "")
-                jud = adresa_sediu.get("sden_judet", "")
-                adresa_text = f"{loc}, Jud. {jud}, Str. {strada} Nr. {nr}".strip(", ")
-                
-                return {
-                    "nume_firma": date_gen.get("denumire", ""),
-                    "cui": str(date_gen.get("cui", cui_curat)),
-                    "reg_com": date_gen.get("nrRegCom", ""),
-                    "adresa": adresa_text or date_gen.get("adresa", "")
-                }, None
-            else:
-                return None, "CUI-ul nu a fost găsit în registrul ANAF."
-        else:
-            return None, f"Serverul ANAF a răspuns cu codul {response.status_code}."
-            
-    except requests.exceptions.ConnectionError:
-        return None, "Eroare de rețea/DNS: Nu s-a putut stabili conexiunea cu serverul."
-    except Exception as e:
-        return None, f"Eroare la conexiune: {e}"
-
-
-# ------------------------------------------------------------------------------
-# 4. Funcții Optimizate cu Cache Individual & Lazy Loading
+# 3. Funcții Optimizate cu Cache Individual & Lazy Loading
 # ------------------------------------------------------------------------------
 @st.cache_data(ttl=300)
 def get_setari():
@@ -277,7 +213,7 @@ def get_dashboard_charts_data():
     return top_def, top_cli, top_ut, def_rec, mas_scad
 
 # ------------------------------------------------------------------------------
-# 5. Clasă Generare PDF Profesionist
+# 4. Clasă Generare PDF Profesionist
 # ------------------------------------------------------------------------------
 class RaportPDF(FPDF):
     def header(self):
@@ -459,7 +395,7 @@ def genereaza_pdf(data):
     return output if isinstance(output, bytes) else output.encode('latin1', errors='ignore')
 
 # ------------------------------------------------------------------------------
-# 6. Background Services Non-Blocking
+# 5. Background Services Non-Blocking
 # ------------------------------------------------------------------------------
 def trimite_email_raport(destinatar_client, subiect, corp_mesaj, pdf_bytes, nume_fisier):
     setari = get_setari()
@@ -512,7 +448,7 @@ def background_sync_task(payload_sheet, email_client, subiect, corp_mesaj, pdf_b
         trimite_email_raport(email_client, subiect, corp_mesaj, pdf_bytes, nume_fisier)
 
 # ------------------------------------------------------------------------------
-# 7. Interfața Principală Streamlit & Sidebar
+# 6. Interfața Principală Streamlit & Sidebar
 # ------------------------------------------------------------------------------
 st.sidebar.title("📌 Nexus Control Panel")
 st.sidebar.text("CMMS Enterprise Dashboard v10.4.7")
@@ -1066,47 +1002,20 @@ with tab_piese:
         st.info("Nu există piese înregistrate pentru filtrul selectat.")
 
 # ------------------------------------------------------------------------------
-# TAB 6: Firme (Căutare CUI ANAF, Adăugare, Editare și Ștergere)
+# TAB 6: Firme (Gestiune Completă - Adăugare, Editare și Ștergere)
 # ------------------------------------------------------------------------------
 with tab_firme:
     st.subheader("📇 Gestiune Firme și Persoane de Contact")
 
-    with st.expander("➕ Adaugă Firmă Nouă (Căutare Automată CUI)", expanded=True):
-        st.markdown("##### 🔍 Căutare automată date după CUI")
-        c_search1, c_search2 = st.columns([3, 1])
-        cui_de_cautat = c_search1.text_input("Introduceți CUI pentru autocompletare", placeholder="ex: 12345678 sau RO12345678", key="input_autosearch_cui")
-        
-        if "firma_auto_data" not in st.session_state:
-            st.session_state["firma_auto_data"] = {"nume": "", "cui": "", "reg": "", "adresa": ""}
-
-        if c_search2.button("🔎 Caută la ANAF", use_container_width=True):
-            if cui_de_cautat:
-                with st.spinner("Se caută datele la ANAF..."):
-                    res_anaf, err_anaf = obtine_date_anaf(cui_de_cautat)
-                    if res_anaf:
-                        st.session_state["firma_auto_data"] = {
-                            "nume": res_anaf["nume_firma"],
-                            "cui": res_anaf["cui"],
-                            "reg": res_anaf["reg_com"],
-                            "adresa": res_anaf["adresa"]
-                        }
-                        st.success("Datele au fost preluate cu succes de la ANAF!")
-                        st.rerun()
-                    else:
-                        st.error(err_anaf)
-            else:
-                st.warning("Introduceți un CUI mai întâi.")
-
-        st.markdown("---")
-        st.markdown("##### 📝 Formular Salvare Firmă")
-        
+    # --- SECȚIUNEA 1: ADĂUGARE FIRMĂ NOUĂ ---
+    with st.expander("➕ Adaugă Firmă Nouă", expanded=True):
         with st.form("form_adaugare_firma_noua", clear_on_submit=True):
             fc_1, fc_2 = st.columns(2)
             with fc_1:
-                in_nume = st.text_input("Nume Firmă *", value=st.session_state["firma_auto_data"]["nume"])
-                in_cui = st.text_input("CUI", value=st.session_state["firma_auto_data"]["cui"])
-                in_reg = st.text_input("Reg. Com.", value=st.session_state["firma_auto_data"]["reg"])
-                in_adresa = st.text_input("Adresă Sediu", value=st.session_state["firma_auto_data"]["adresa"])
+                in_nume = st.text_input("Nume Firmă *", placeholder="ex: Client SRL")
+                in_cui = st.text_input("CUI", placeholder="ex: 12345678")
+                in_reg = st.text_input("Reg. Com.", placeholder="ex: J12/123/2020")
+                in_adresa = st.text_input("Adresă Sediu")
             with fc_2:
                 in_banca = st.text_input("Bancă")
                 in_cont = st.text_input("Cont / IBAN")
@@ -1122,13 +1031,14 @@ with tab_firme:
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """, (in_nume, in_cui, in_reg, in_adresa, in_banca, in_cont, in_pers, in_email, in_tel))
                     get_firme.clear()
-                    st.session_state["firma_auto_data"] = {"nume": "", "cui": "", "reg": "", "adresa": ""}
                     st.success(f"Firma **{in_nume}** a fost adăugată cu succes!")
                     st.rerun()
                 else:
                     st.error("Numele firmei este obligatoriu!")
 
     st.markdown("---")
+    
+    # --- SECȚIUNEA 2: EDITARE ȘI MODIFICARE FIRME EXISTENTE ---
     st.subheader("📋 Editare și Modificare Firme Existente")
     
     firme_db = get_firme()
@@ -1162,7 +1072,7 @@ with tab_firme:
                     
                     btn_upd, btn_del = st.columns(2)
                     with btn_upd:
-                        if st.form_submit_button(f"🔄 Actualizează Date Firmă", type="primary", use_container_width=True):
+                        if st.form_submit_button("🔄 Actualizează Date Firmă", type="primary", use_container_width=True):
                             with db_cursor() as cur_upd_f:
                                 cur_upd_f.execute("""
                                     UPDATE firme 
@@ -1174,11 +1084,11 @@ with tab_firme:
                             st.success(f"Datele firmei **{mod_nume}** au fost actualizate!")
                             st.rerun()
                     with btn_del:
-                        if st.form_submit_button(f"🗑️ Șterge Firma", use_container_width=True):
+                        if st.form_submit_button("🗑️ Șterge Firma", use_container_width=True):
                             with db_cursor() as cur_del_f:
                                 cur_del_f.execute("DELETE FROM firme WHERE id = %s", (fid,))
                             get_firme.clear()
-                            st.success(f"Firma a fost ștearsă!")
+                            st.success("Firma a fost ștearsă!")
                             st.rerun()
     else:
         st.info("Nu există firme înregistrate în baza de date.")
