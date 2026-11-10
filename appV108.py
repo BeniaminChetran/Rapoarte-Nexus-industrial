@@ -1002,19 +1002,91 @@ with tab_piese:
         st.info("Nu există piese înregistrate pentru filtrul selectat.")
 
 # ------------------------------------------------------------------------------
-# TAB 6: Firme (Actualizat cu câmpuri de editare și modificare)
+# TAB 6: Firme (Actualizat cu Căutare Automată după CUI via ANAF / API)
 # ------------------------------------------------------------------------------
 with tab_firme:
     st.subheader("📇 Gestiune Firme și Persoane de Contact")
-    
-    with st.expander("➕ Adaugă Firmă Nouă", expanded=False):
+
+    # Funcție utilitară pentru interogarea API-ului ANAF
+    def obtine_date_anaf(cui_input):
+        cui_curat = ''.join(filter(str.isdigit, str(cui_input)))
+        if not cui_curat:
+            return None, "Introduceți un CUI valid!"
+        
+        url = "https://webservicesp.anaf.ro/PlatitorTvaRest/api/v6/ws/tva"
+        payload = [{"cui": int(cui_curat), "data": date.today().strftime("%Y-%m-%d")}]
+        
+        try:
+            req = urllib.request.Request(
+                url, 
+                data=json.dumps(payload).encode('utf-8'), 
+                headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                res_data = json.loads(resp.read().decode('utf-8'))
+                found = res_data.get("found", [])
+                if found:
+                    date_f = found[0]
+                    date_gen = date_f.get("date_generale", {})
+                    adresa_sediu = date_f.get("adresa_sediu_social", {})
+                    
+                    # Construim adresa completă din datele ANAF
+                    strada = adresa_sediu.get("sden_strada", "")
+                    nr = adresa_sediu.get("sden_numar", "")
+                    loc = adresa_sediu.get("sden_localitate", "")
+                    jud = adresa_sediu.get("sden_judet", "")
+                    adresa_text = f"{loc}, Jud. {jud}, Str. {strada} Nr. {nr}".strip(", ")
+                    
+                    return {
+                        "nume_firma": date_gen.get("denumire", ""),
+                        "cui": str(date_gen.get("cui", "")),
+                        "reg_com": date_gen.get("nrRegCom", ""),
+                        "adresa": adresa_text or date_gen.get("adresa", "")
+                    }, None
+                else:
+                    return None, "CUI-ul nu a fost găsit în baza de date ANAF."
+        except Exception as e:
+            return None, f"Eroare la conectarea cu API-ul ANAF: {e}"
+
+    # --- SECȚIUNEA 1: ADĂUGARE FIRMĂ NOUĂ CU CĂUTARE AUTOMATĂ ---
+    with st.expander("➕ Adaugă Firmă Nouă (Căutare Automată CUI)", expanded=True):
+        
+        # Căutare rapidă CUI înainte de formular
+        st.markdown("##### 🔍 Căutare automată date după CUI")
+        c_search1, c_search2 = st.columns([3, 1])
+        cui_de_cautat = c_search1.text_input("Introduceți CUI pentru autocompletare", placeholder="ex: 12345678 sau RO12345678", key="input_autosearch_cui")
+        
+        if "firma_auto_data" not in st.session_state:
+            st.session_state["firma_auto_data"] = {"nume": "", "cui": "", "reg": "", "adresa": ""}
+
+        if c_search2.button("🔎 Caută la ANAF", use_container_width=True):
+            if cui_de_cautat:
+                with st.spinner("Se caută datele la ANAF..."):
+                    res_anaf, err_anaf = obtine_date_anaf(cui_de_cautat)
+                    if res_anaf:
+                        st.session_state["firma_auto_data"] = {
+                            "nume": res_anaf["nume_firma"],
+                            "cui": res_anaf["cui"],
+                            "reg": res_anaf["reg_com"],
+                            "adresa": res_anaf["adresa"]
+                        }
+                        st.success("Datele au fost preluate cu succes de la ANAF!")
+                    else:
+                        st.error(err_anaf)
+            else:
+                st.warning("Introduceți un CUI mai întâi.")
+
+        st.markdown("---")
+        st.markdown("##### 📝 Formular Salvare Firmă")
+        
+        # Formular completat automat din starea sesiunii
         with st.form("form_adaugare_firma_noua", clear_on_submit=True):
             fc_1, fc_2 = st.columns(2)
             with fc_1:
-                in_nume = st.text_input("Nume Firmă *")
-                in_cui = st.text_input("CUI")
-                in_reg = st.text_input("Reg. Com.")
-                in_adresa = st.text_input("Adresă Sediu")
+                in_nume = st.text_input("Nume Firmă *", value=st.session_state["firma_auto_data"]["nume"])
+                in_cui = st.text_input("CUI", value=st.session_state["firma_auto_data"]["cui"])
+                in_reg = st.text_input("Reg. Com.", value=st.session_state["firma_auto_data"]["reg"])
+                in_adresa = st.text_input("Adresă Sediu", value=st.session_state["firma_auto_data"]["adresa"])
             with fc_2:
                 in_banca = st.text_input("Bancă")
                 in_cont = st.text_input("Cont / IBAN")
@@ -1030,12 +1102,16 @@ with tab_firme:
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """, (in_nume, in_cui, in_reg, in_adresa, in_banca, in_cont, in_pers, in_email, in_tel))
                     get_firme.clear()
+                    # Resetăm starea de autocompletare
+                    st.session_state["firma_auto_data"] = {"nume": "", "cui": "", "reg": "", "adresa": ""}
                     st.success(f"Firma **{in_nume}** a fost adăugată cu succes!")
                     st.rerun()
                 else:
                     st.error("Numele firmei este obligatoriu!")
 
     st.markdown("---")
+    
+    # --- SECȚIUNEA 2: EDITARE ȘI MODIFICARE FIRME EXISTENTE ---
     st.subheader("📋 Editare și Modificare Firme Existente")
     
     firme_db = get_firme()
@@ -1052,7 +1128,7 @@ with tab_firme:
             femail = f['email'] or ""
             ftel = f['telefon'] or ""
             
-            with st.expander(f"🏢 {fnume} (Contact: {fpers or 'Nespecificat'} | Tel: {ftel or 'Nespecificat'})"):
+            with st.expander(f"🏢 {fnume} (CUI: {fcui or 'N/A'} | Contact: {fpers or 'Nespecificat'})"):
                 with st.form(f"form_mod_firma_{fid}"):
                     mf_c1, mf_c2 = st.columns(2)
                     with mf_c1:
@@ -1067,17 +1143,26 @@ with tab_firme:
                         mod_email = st.text_input("Email", value=femail, key=f"mf_email_{fid}")
                         mod_tel = st.text_input("Telefon", value=ftel, key=f"mf_tel_{fid}")
                     
-                    if st.form_submit_button(f"🔄 Actualizează Date Firmă #{fid}", type="primary"):
-                        with db_cursor() as cur_upd_f:
-                            cur_upd_f.execute("""
-                                UPDATE firme 
-                                SET nume_firma = %s, cui = %s, reg_com = %s, adresa = %s, 
-                                    banca = %s, cont = %s, nume_persoana = %s, email = %s, telefon = %s
-                                WHERE id = %s
-                            """, (mod_nume, mod_cui, mod_reg, mod_adresa, mod_banca, mod_cont, mod_pers, mod_email, mod_tel, fid))
-                        get_firme.clear()
-                        st.success(f"Datele firmei **{mod_nume}** au fost actualizate cu succes!")
-                        st.rerun()
+                    btn_upd, btn_del = st.columns(2)
+                    with btn_upd:
+                        if st.form_submit_button(f"🔄 Actualizează Date Firmă", type="primary", use_container_width=True):
+                            with db_cursor() as cur_upd_f:
+                                cur_upd_f.execute("""
+                                    UPDATE firme 
+                                    SET nume_firma = %s, cui = %s, reg_com = %s, adresa = %s, 
+                                        banca = %s, cont = %s, nume_persoana = %s, email = %s, telefon = %s
+                                    WHERE id = %s
+                                """, (mod_nume, mod_cui, mod_reg, mod_adresa, mod_banca, mod_cont, mod_pers, mod_email, mod_tel, fid))
+                            get_firme.clear()
+                            st.success(f"Datele firmei **{mod_nume}** au fost actualizate!")
+                            st.rerun()
+                    with btn_del:
+                        if st.form_submit_button(f"🗑️ Șterge Firma", use_container_width=True):
+                            with db_cursor() as cur_del_f:
+                                cur_del_f.execute("DELETE FROM firme WHERE id = %s", (fid,))
+                            get_firme.clear()
+                            st.success(f"Firma a fost ștearsă!")
+                            st.rerun()
     else:
         st.info("Nu există firme înregistrate în baza de date.")
 
