@@ -1002,12 +1002,13 @@ with tab_piese:
         st.info("Nu există piese înregistrate pentru filtrul selectat.")
 
 # ------------------------------------------------------------------------------
-# TAB 6: Firme (Actualizat cu Căutare Automată după CUI via ANAF / API)
+# TAB 6: Firme (Actualizat cu Căutare Automată după CUI via ANAF / requests)
 # ------------------------------------------------------------------------------
 with tab_firme:
     st.subheader("📇 Gestiune Firme și Persoane de Contact")
 
-    # Funcție utilitară pentru interogarea API-ului ANAF
+    import requests
+
     def obtine_date_anaf(cui_input):
         cui_curat = ''.join(filter(str.isdigit, str(cui_input)))
         if not cui_curat:
@@ -1015,15 +1016,16 @@ with tab_firme:
         
         url = "https://webservicesp.anaf.ro/PlatitorTvaRest/api/v6/ws/tva"
         payload = [{"cui": int(cui_curat), "data": date.today().strftime("%Y-%m-%d")}]
+        headers = {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
         
         try:
-            req = urllib.request.Request(
-                url, 
-                data=json.dumps(payload).encode('utf-8'), 
-                headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
-            )
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                res_data = json.loads(resp.read().decode('utf-8'))
+            # Folosim 'requests' în loc de 'urllib' pentru a evita erorile de conexiune SSL (Connection reset by peer)
+            response = requests.post(url, json=payload, headers=headers, timeout=10)
+            if response.status_code == 200:
+                res_data = response.json()
                 found = res_data.get("found", [])
                 if found:
                     date_f = found[0]
@@ -1045,13 +1047,14 @@ with tab_firme:
                     }, None
                 else:
                     return None, "CUI-ul nu a fost găsit în baza de date ANAF."
+            else:
+                return None, f"Eroare HTTP de la ANAF: {response.status_code}"
         except Exception as e:
             return None, f"Eroare la conectarea cu API-ul ANAF: {e}"
 
     # --- SECȚIUNEA 1: ADĂUGARE FIRMĂ NOUĂ CU CĂUTARE AUTOMATĂ ---
     with st.expander("➕ Adaugă Firmă Nouă (Căutare Automată CUI)", expanded=True):
         
-        # Căutare rapidă CUI înainte de formular
         st.markdown("##### 🔍 Căutare automată date după CUI")
         c_search1, c_search2 = st.columns([3, 1])
         cui_de_cautat = c_search1.text_input("Introduceți CUI pentru autocompletare", placeholder="ex: 12345678 sau RO12345678", key="input_autosearch_cui")
@@ -1071,6 +1074,7 @@ with tab_firme:
                             "adresa": res_anaf["adresa"]
                         }
                         st.success("Datele au fost preluate cu succes de la ANAF!")
+                        st.rerun()
                     else:
                         st.error(err_anaf)
             else:
@@ -1079,7 +1083,6 @@ with tab_firme:
         st.markdown("---")
         st.markdown("##### 📝 Formular Salvare Firmă")
         
-        # Formular completat automat din starea sesiunii
         with st.form("form_adaugare_firma_noua", clear_on_submit=True):
             fc_1, fc_2 = st.columns(2)
             with fc_1:
@@ -1102,7 +1105,6 @@ with tab_firme:
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """, (in_nume, in_cui, in_reg, in_adresa, in_banca, in_cont, in_pers, in_email, in_tel))
                     get_firme.clear()
-                    # Resetăm starea de autocompletare
                     st.session_state["firma_auto_data"] = {"nume": "", "cui": "", "reg": "", "adresa": ""}
                     st.success(f"Firma **{in_nume}** a fost adăugată cu succes!")
                     st.rerun()
@@ -1165,7 +1167,6 @@ with tab_firme:
                             st.rerun()
     else:
         st.info("Nu există firme înregistrate în baza de date.")
-
 # ------------------------------------------------------------------------------
 # TAB 7: Setări
 # ------------------------------------------------------------------------------
