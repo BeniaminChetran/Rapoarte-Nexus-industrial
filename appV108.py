@@ -74,35 +74,50 @@ class LegacySSLAdapter(HTTPAdapter):
 
 
 def obtine_date_anaf(cui_input):
-    # Păstrăm doar cifrele din CUI și eliminăm eventuale caractere extra sau prefixul RO
+    # Păstrăm doar cifrele din CUI și eliminăm eventuale spații sau prefixul RO
     cui_curat = ''.join(filter(str.isdigit, str(cui_input)))
     
     if not cui_curat or len(cui_curat) < 2 or len(cui_curat) > 10:
-        return None, "CUI-ul introdus nu este valid (trebuie să conțină între 2 și 10 cifre)."
+        return None, "CUI-ul introdus nu este valid."
     
-    url = f"https://api.openapi.ro/api/companies/{cui_curat}"
-    
+    url = "https://webservicesp.anaf.ro/PlatitorTvaRest/api/v6/ws/tva"
+    payload = [{"cui": int(cui_curat), "data": date.today().strftime("%Y-%m-%d")}]
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        'Accept': 'application/json'
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
     }
     
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        # Folosim sesiunea cu adaptorul SSL pe care l-am setat anterior la începutul aplicației
+        session = requests.Session()
+        session.mount("https://", LegacySSLAdapter())
+        
+        response = session.post(url, json=payload, headers=headers, timeout=10)
+        
         if response.status_code == 200:
-            data = response.json()
-            return {
-                "nume_firma": data.get("name", ""),
-                "cui": str(data.get("cif", cui_curat)),
-                "reg_com": data.get("registration_number", ""),
-                "adresa": data.get("address", "")
-            }, None
-        elif response.status_code == 400:
-            return None, "Eroare 400: Serverul a respins cererea. Verifică dacă CUI-ul este corect."
-        elif response.status_code == 404:
-            return None, "CUI-ul nu a fost găsit în baza de date."
+            res_data = response.json()
+            found = res_data.get("found", [])
+            if found:
+                date_f = found[0]
+                date_gen = date_f.get("date_generale", {})
+                adresa_sediu = date_f.get("adresa_sediu_social", {})
+                
+                strada = adresa_sediu.get("sden_strada", "")
+                nr = adresa_sediu.get("sden_numar", "")
+                loc = adresa_sediu.get("sden_localitate", "")
+                jud = adresa_sediu.get("sden_judet", "")
+                adresa_text = f"{loc}, Jud. {jud}, Str. {strada} Nr. {nr}".strip(", ")
+                
+                return {
+                    "nume_firma": date_gen.get("denumire", ""),
+                    "cui": str(date_gen.get("cui", "")),
+                    "reg_com": date_gen.get("nrRegCom", ""),
+                    "adresa": adresa_text or date_gen.get("adresa", "")
+                }, None
+            else:
+                return None, "CUI-ul nu a fost găsit în baza de date ANAF."
         else:
-            return None, f"Eroare de la server (Cod {response.status_code})"
+            return None, f"Eroare de la server ANAF (Cod {response.status_code})"
     except Exception as e:
         return None, f"Eroare la conexiune: {e}"
 
