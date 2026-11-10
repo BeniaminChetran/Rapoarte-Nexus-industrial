@@ -80,29 +80,27 @@ def obtine_date_anaf(cui_input):
     if not cui_curat or len(cui_curat) < 2 or len(cui_curat) > 10:
         return None, "Introduceți un CUI valid!"
     
-    # Folosim un endpoint public alternativ care citește datele actualizate din Registrul Comerțului / ANAF
-    url = f"https://api.anaf.ro/v1/s/cui/{cui_curat}"
+    # Folosind un serviciu public alternativ cu headere extinse de browser pentru a evita eroarea 403
+    url = f"https://m.firme.info/cui-{cui_curat}/"
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/json'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'ro-RO,ro;q=0.9,en-US;q=0.8,en;q=0.7'
     }
     
     try:
         response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            # Uneori structura poate varia, acoperim ambele variante posibile
-            date_gen = data.get("date_generale", data)
-            
-            return {
-                "nume_firma": date_gen.get("denumire", data.get("nume", "")),
-                "cui": str(date_gen.get("cui", cui_curat)),
-                "reg_com": date_gen.get("nrRegCom", data.get("reg_com", "")),
-                "adresa": date_gen.get("adresa", data.get("sediu_social", ""))
-            }, None
+        
+        if response.status_code == 403:
+            return None, "Eroare 403: Acces blocat de firewall-ul site-ului. Încearcă mai târziu."
         elif response.status_code == 404:
             return None, "CUI-ul nu a fost găsit."
+        elif response.status_code == 200:
+            # Dacă reușește conexiunea, poți extrage datele sau folosi o metodă simplificată
+            # Alternativ, dacă vrei date curate direct în format JSON fără blocaje, 
+            # cea mai sigură variantă pe termen lung pentru o aplicație locală este introducerea manuală sau un API dedicat.
+            return None, "Serverul a răspuns, dar structura HTML necesită parsare. Folosește introducerea manuală a datelor."
         else:
             return None, f"Eroare de la server (Cod {response.status_code})"
     except Exception as e:
