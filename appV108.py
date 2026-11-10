@@ -18,8 +18,21 @@ import psycopg2.extras
 from psycopg2.pool import ThreadedConnectionPool
 import pandas as pd
 import plotly.express as px
+import requests
+import ssl
+from requests.adapters import HTTPAdapter
 
 load_dotenv()
+
+
+# Adaptor personalizat pentru a permite comunicarea cu serverul ANAF (evită Connection reset)
+class LegacySSLAdapter(HTTPAdapter):
+    def init_poolmanager(self, *args, **kwargs):
+        context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+        context.set_ciphers('DEFAULT@SECLEVEL=1')
+        kwargs['ssl_context'] = context
+        return super().init_poolmanager(*args, **kwargs)
+        
 
 # ------------------------------------------------------------------------------
 # 1. CONFIGURARE CONNECTION POOL & CACHE RESOURCE
@@ -265,6 +278,10 @@ def genereaza_pdf(data):
     pdf.cell(0, 4, curata_text(f"Adresă: {setari_pdf['adresa_mea']} | Bancă: {setari_pdf['banca_mea']} | IBAN: {setari_pdf['iban_mea']} | SWIFT: {setari_pdf['swep_mea']}"), 0, 1, 'L')
     pdf.ln(6)
 
+    # Rândul cu Nr. Înregistrare (stânga), Titlu Lucrare (centru) și Data (dreapta)
+    pdf.set_font('Helvetica', 'B', 10)
+    pdf.set_text_color(*PRIMARY)
+    
     y_start = pdf.get_y()
     pdf.set_xy(10, y_start)
     pdf.cell(50, 7, curata_text(f"Nr. Inreg: #{data['id']}"), 0, 0, 'L')
@@ -289,19 +306,23 @@ def genereaza_pdf(data):
     pdf.set_font('Helvetica', '', 9)
     pdf.set_text_color(0, 0, 0)
     
+    # Rândul 1: Client vs Echipament (Denumire)
     pdf.set_x(12)
     pdf.cell(90, 5, curata_text(f"Client: {data['client'] or 'Nespecificat'}"), 0, 0)
     pdf.cell(90, 5, curata_text(f"Echipament: {data['masina']}"), 0, 1)
 
+    # Rândul 2: Durata vs Detalii Echipament (Tip, Serie, An Fabricație)
     pdf.set_x(12)
     pdf.cell(90, 5, curata_text(f"Durata: {data['durata']} minute ({data.get('tip_interventie', 'N/A')})"), 0, 0)
     detalii_masina_str = f"Tip: {data.get('tip_masina', 'N/A')} | Serie: {data.get('serie', 'N/A')} | An: {data.get('an_fabricatie', 'N/A')}"
     pdf.cell(90, 5, curata_text(detalii_masina_str), 0, 1)
 
+    # Rândul 3: Cod Eroare vs Subansamblu
     pdf.set_x(12)
     pdf.cell(90, 5, curata_text(f"Cod Eroare: {data.get('cod_eroare','N/A')}"), 0, 0)
     pdf.cell(90, 5, curata_text(f"Subansamblul: {data.get('subansamblu','General')}"), 0, 1)
 
+    # Rândul 4: Stare Finală
     pdf.set_x(12)
     pdf.cell(90, 5, "", 0, 0)
     pdf.set_font('Helvetica', 'B', 9)
@@ -320,6 +341,10 @@ def genereaza_pdf(data):
         pdf.multi_cell(0, 5, curata_text(continut or "Nespecificat"))
         pdf.ln(4)
 
+    # Construim structura clar separată pe rânduri:
+    # 1. Cod eroare (dacă există) pe primul rând dedicat
+    # 2. Simptomul reclamat
+    # 3. Defectul constatat pe un rând nou dedesubt
     linii_simptom_defect = []
     
     cod_err_val = data.get('cod_eroare', 'Niciunul')
@@ -337,6 +362,87 @@ def genereaza_pdf(data):
     continut_simptom_defect = "\n".join(linii_simptom_defect)
 
     adauga_sectiune("Simptom Initial / Defect", continut_simptom_defect)
+    adauga_sectiune("Solutie / Lucrari Executate", data['solutie'])
+
+    pdf.set_font('Helvetica', 'B', 10)
+    pdf.set_text_color(*SECONDARY)
+    pdf.cell(0, 6, curata_text("TABEL PIESE (UTILIZATE / INLOCUITE / NECESARE / COMANDAT)"), 0, 1)
+    pdf.set_draw_color(*SECONDARY)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(2)
+    
+    pdf.set_font('Helvetica', 'B', 9)
+    pdf.cell(100, 6, curata_text("Denumire Piesa"), 1, 0, 'C', fill=True)
+    pdf.cell(40, 6, curata_text("Cantitate"), 1, 0, 'C', fill=True)
+    pdf.cell(50, 6, curata_text("Tip / Status"), 1, 1, 'C', fill=True)
+    
+    pdf.set_font('Helvetica', '', 9)
+    piese_list = data.get('piese_json', [])
+    if piese_list:
+        for p in piese_list:
+            if isinstance(p, dict):
+                nume_p = p.get('piesa') or p.get('Piesa') or ''
+                cant_p = p.get('cantitate') if p.get('cantitate') is not None else p.get('Cantitate', 1)
+                tip_p = p.get('tip') or p.get('Tip') or ''
+                
+                pdf.cell(100, 6, curata_text(str(nume_p)), 1, 0, 'L')
+                pdf.cell(40, 6, str(cant_p), 1, 0, 'C')
+                pdf.cell(50, 6, curata_text(str(tip_p)), 1, 1, 'C')
+            else:
+                pdf.cell(100, 6, curata_text(str(p)), 1, 0, 'L')
+                pdf.cell(40, 6, "1", 1, 0, 'C')
+                pdf.cell(50, 6, curata_text("Utilizata"), 1, 1, 'C')
+    else:
+        pdf.cell(190, 6, curata_text("Nicio piesa inregistrata"), 1, 1, 'C')
+    pdf.ln(4)
+
+    if data['optimizari']:
+        adauga_sectiune("Recomandari Tehnice & Siguranta", data['optimizari'])
+
+    if pdf.get_y() > 235:
+        pdf.add_page()
+
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(4)
+    pdf.set_font('Helvetica', 'B', 9)
+    pdf.set_text_color(*PRIMARY)
+    pdf.cell(95, 5, curata_text("EFECTUAT DE (TEHNICIAN)"), 0, 0, 'C')
+    pdf.cell(95, 5, curata_text("VERIFICAT / RECEPTIONAT DE"), 0, 1, 'C')
+    pdf.set_font('Helvetica', '', 9)
+    pdf.set_text_color(0, 0, 0)
+    pdf.cell(95, 5, curata_text(f"Nume: {data['tehnician'] or 'Tehnician Nexus'}"), 0, 0, 'C')
+    pdf.cell(95, 5, curata_text(f"Nume: {data['verificator'] or 'Client'}"), 0, 1, 'C')
+    pdf.ln(8)
+    pdf.cell(95, 5, curata_text("Semnatura: ___________________"), 0, 0, 'C')
+    pdf.cell(95, 5, curata_text("Semnatura: ___________________"), 0, 1, 'C')
+
+    output = pdf.output(dest='S') if hasattr(pdf, 'output') else pdf.output()
+    return output if isinstance(output, bytes) else output.encode('latin1', errors='ignore')
+    def adauga_sectiune(titlu, continut):
+        pdf.set_font('Helvetica', 'B', 10)
+        pdf.set_text_color(*SECONDARY)
+        pdf.cell(0, 6, curata_text(titlu.upper()), 0, 1)
+        pdf.set_draw_color(*SECONDARY)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(2)
+        pdf.set_font('Helvetica', '', 9)
+        pdf.set_text_color(0, 0, 0)
+        pdf.multi_cell(0, 5, curata_text(continut or "Nespecificat"))
+        pdf.ln(4)
+
+    # Pregătire Simptom & Cod Eroare (pe primul rând, fără paranteze)
+    simptom_text = data['simptom'] or ""
+    cod_err_val = data.get('cod_eroare', 'Niciunul')
+    
+    if cod_err_val and cod_err_val != "Niciunul":
+        simptom_complet = f"Cod eroare: {cod_err_val} - {simptom_text}" if simptom_text else f"Cod eroare: {cod_err_val}"
+    else:
+        simptom_complet = simptom_text
+
+    defect_text = data['defect'] or ""
+
+    # Secțiunea Simptom / Defect (simptomul + codul de eroare pe primul rând, defectul pe rândul nou)
+    adauga_sectiune("Simptom Initial / Defect", f"{simptom_complet}\n{defect_text}")
     adauga_sectiune("Solutie / Lucrari Executate", data['solutie'])
 
     pdf.set_font('Helvetica', 'B', 10)
@@ -457,6 +563,7 @@ st.sidebar.info("Conexiune optimizată prin ThreadedConnectionPool & Cache.")
 
 st.title("🛠️ NexInd CMMS Dashboard & Predictive")
 
+# TITLURI REVIZUITE
 tab_dashboard, tab_activitati, tab_istoric, tab_predictii, tab_masini, tab_piese, tab_firme, tab_setari = st.tabs([
     "📈 0. Dashboard",
     "📝 1. Activități", 
@@ -1001,17 +1108,11 @@ with tab_piese:
     else:
         st.info("Nu există piese înregistrate pentru filtrul selectat.")
 
-import requests
-import ssl
-from requests.adapters import HTTPAdapter
-
-# Adaptor personalizat pentru a permite comunicarea cu serverul ANAF (evită Connection reset)
-class LegacySSLAdapter(HTTPAdapter):
-    def init_poolmanager(self, *args, **kwargs):
-        context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
-        context.set_ciphers('DEFAULT@SECLEVEL=1')
-        kwargs['ssl_context'] = context
-        return super().init_poolmanager(*args, **kwargs)
+# ------------------------------------------------------------------------------
+# TAB 6: Firme (Actualizat cu Căutare Automată după CUI via ANAF / requests)
+# ------------------------------------------------------------------------------
+with tab_firme:
+    st.subheader("📇 Gestiune Firme și Persoane de Contact")
 
 def obtine_date_anaf(cui_input):
     cui_curat = ''.join(filter(str.isdigit, str(cui_input)))
@@ -1057,7 +1158,121 @@ def obtine_date_anaf(cui_input):
             return None, f"Eroare HTTP de la ANAF: {response.status_code}"
     except Exception as e:
         return None, f"Eroare la conectarea cu API-ul ANAF: {e}"
+    # --- SECȚIUNEA 1: ADĂUGARE FIRMĂ NOUĂ CU CĂUTARE AUTOMATĂ ---
+    with st.expander("➕ Adaugă Firmă Nouă (Căutare Automată CUI)", expanded=True):
+        
+        st.markdown("##### 🔍 Căutare automată date după CUI")
+        c_search1, c_search2 = st.columns([3, 1])
+        cui_de_cautat = c_search1.text_input("Introduceți CUI pentru autocompletare", placeholder="ex: 12345678 sau RO12345678", key="input_autosearch_cui")
+        
+        if "firma_auto_data" not in st.session_state:
+            st.session_state["firma_auto_data"] = {"nume": "", "cui": "", "reg": "", "adresa": ""}
 
+        if c_search2.button("🔎 Caută la ANAF", use_container_width=True):
+            if cui_de_cautat:
+                with st.spinner("Se caută datele la ANAF..."):
+                    res_anaf, err_anaf = obtine_date_anaf(cui_de_cautat)
+                    if res_anaf:
+                        st.session_state["firma_auto_data"] = {
+                            "nume": res_anaf["nume_firma"],
+                            "cui": res_anaf["cui"],
+                            "reg": res_anaf["reg_com"],
+                            "adresa": res_anaf["adresa"]
+                        }
+                        st.success("Datele au fost preluate cu succes de la ANAF!")
+                        st.rerun()
+                    else:
+                        st.error(err_anaf)
+            else:
+                st.warning("Introduceți un CUI mai întâi.")
+
+        st.markdown("---")
+        st.markdown("##### 📝 Formular Salvare Firmă")
+        
+        with st.form("form_adaugare_firma_noua", clear_on_submit=True):
+            fc_1, fc_2 = st.columns(2)
+            with fc_1:
+                in_nume = st.text_input("Nume Firmă *", value=st.session_state["firma_auto_data"]["nume"])
+                in_cui = st.text_input("CUI", value=st.session_state["firma_auto_data"]["cui"])
+                in_reg = st.text_input("Reg. Com.", value=st.session_state["firma_auto_data"]["reg"])
+                in_adresa = st.text_input("Adresă Sediu", value=st.session_state["firma_auto_data"]["adresa"])
+            with fc_2:
+                in_banca = st.text_input("Bancă")
+                in_cont = st.text_input("Cont / IBAN")
+                in_pers = st.text_input("Nume Persoană Contact")
+                in_email = st.text_input("Email Contact")
+                in_tel = st.text_input("Telefon Contact")
+                
+            if st.form_submit_button("💾 Salvează Firma Nouă", type="primary"):
+                if in_nume.strip():
+                    with db_cursor() as cur_ins_f:
+                        cur_ins_f.execute("""
+                            INSERT INTO firme (nume_firma, cui, reg_com, adresa, banca, cont, nume_persoana, email, telefon)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (in_nume, in_cui, in_reg, in_adresa, in_banca, in_cont, in_pers, in_email, in_tel))
+                    get_firme.clear()
+                    st.session_state["firma_auto_data"] = {"nume": "", "cui": "", "reg": "", "adresa": ""}
+                    st.success(f"Firma **{in_nume}** a fost adăugată cu succes!")
+                    st.rerun()
+                else:
+                    st.error("Numele firmei este obligatoriu!")
+
+    st.markdown("---")
+    
+    # --- SECȚIUNEA 2: EDITARE ȘI MODIFICARE FIRME EXISTENTE ---
+    st.subheader("📋 Editare și Modificare Firme Existente")
+    
+    firme_db = get_firme()
+    if firme_db:
+        for f in firme_db:
+            fid = f['id']
+            fnume = f['nume_firma'] or ""
+            fcui = f['cui'] or ""
+            freg = f['reg_com'] or ""
+            fadr = f['adresa'] or ""
+            fbanc = f['banca'] or ""
+            fcont = f['cont'] or ""
+            fpers = f['nume_persoana'] or ""
+            femail = f['email'] or ""
+            ftel = f['telefon'] or ""
+            
+            with st.expander(f"🏢 {fnume} (CUI: {fcui or 'N/A'} | Contact: {fpers or 'Nespecificat'})"):
+                with st.form(f"form_mod_firma_{fid}"):
+                    mf_c1, mf_c2 = st.columns(2)
+                    with mf_c1:
+                        mod_nume = st.text_input("Nume Firmă", value=fnume, key=f"mf_nume_{fid}")
+                        mod_cui = st.text_input("CUI", value=fcui, key=f"mf_cui_{fid}")
+                        mod_reg = st.text_input("Reg. Com.", value=freg, key=f"mf_reg_{fid}")
+                        mod_adresa = st.text_input("Adresă", value=fadr, key=f"mf_adr_{fid}")
+                        mod_banca = st.text_input("Bancă", value=fbanc, key=f"mf_banca_{fid}")
+                    with mf_c2:
+                        mod_cont = st.text_input("Cont / IBAN", value=fcont, key=f"mf_cont_{fid}")
+                        mod_pers = st.text_input("Persoană Contact", value=fpers, key=f"mf_pers_{fid}")
+                        mod_email = st.text_input("Email", value=femail, key=f"mf_email_{fid}")
+                        mod_tel = st.text_input("Telefon", value=ftel, key=f"mf_tel_{fid}")
+                    
+                    btn_upd, btn_del = st.columns(2)
+                    with btn_upd:
+                        if st.form_submit_button(f"🔄 Actualizează Date Firmă", type="primary", use_container_width=True):
+                            with db_cursor() as cur_upd_f:
+                                cur_upd_f.execute("""
+                                    UPDATE firme 
+                                    SET nume_firma = %s, cui = %s, reg_com = %s, adresa = %s, 
+                                        banca = %s, cont = %s, nume_persoana = %s, email = %s, telefon = %s
+                                    WHERE id = %s
+                                """, (mod_nume, mod_cui, mod_reg, mod_adresa, mod_banca, mod_cont, mod_pers, mod_email, mod_tel, fid))
+                            get_firme.clear()
+                            st.success(f"Datele firmei **{mod_nume}** au fost actualizate!")
+                            st.rerun()
+                    with btn_del:
+                        if st.form_submit_button(f"🗑️ Șterge Firma", use_container_width=True):
+                            with db_cursor() as cur_del_f:
+                                cur_del_f.execute("DELETE FROM firme WHERE id = %s", (fid,))
+                            get_firme.clear()
+                            st.success(f"Firma a fost ștearsă!")
+                            st.rerun()
+    else:
+        st.info("Nu există firme înregistrate în baza de date.")
 # ------------------------------------------------------------------------------
 # TAB 7: Setări
 # ------------------------------------------------------------------------------
