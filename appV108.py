@@ -265,10 +265,6 @@ def genereaza_pdf(data):
     pdf.cell(0, 4, curata_text(f"Adresă: {setari_pdf['adresa_mea']} | Bancă: {setari_pdf['banca_mea']} | IBAN: {setari_pdf['iban_mea']} | SWIFT: {setari_pdf['swep_mea']}"), 0, 1, 'L')
     pdf.ln(6)
 
-    # Rândul cu Nr. Înregistrare (stânga), Titlu Lucrare (centru) și Data (dreapta)
-    pdf.set_font('Helvetica', 'B', 10)
-    pdf.set_text_color(*PRIMARY)
-    
     y_start = pdf.get_y()
     pdf.set_xy(10, y_start)
     pdf.cell(50, 7, curata_text(f"Nr. Inreg: #{data['id']}"), 0, 0, 'L')
@@ -293,23 +289,19 @@ def genereaza_pdf(data):
     pdf.set_font('Helvetica', '', 9)
     pdf.set_text_color(0, 0, 0)
     
-    # Rândul 1: Client vs Echipament (Denumire)
     pdf.set_x(12)
     pdf.cell(90, 5, curata_text(f"Client: {data['client'] or 'Nespecificat'}"), 0, 0)
     pdf.cell(90, 5, curata_text(f"Echipament: {data['masina']}"), 0, 1)
 
-    # Rândul 2: Durata vs Detalii Echipament (Tip, Serie, An Fabricație)
     pdf.set_x(12)
     pdf.cell(90, 5, curata_text(f"Durata: {data['durata']} minute ({data.get('tip_interventie', 'N/A')})"), 0, 0)
     detalii_masina_str = f"Tip: {data.get('tip_masina', 'N/A')} | Serie: {data.get('serie', 'N/A')} | An: {data.get('an_fabricatie', 'N/A')}"
     pdf.cell(90, 5, curata_text(detalii_masina_str), 0, 1)
 
-    # Rândul 3: Cod Eroare vs Subansamblu
     pdf.set_x(12)
     pdf.cell(90, 5, curata_text(f"Cod Eroare: {data.get('cod_eroare','N/A')}"), 0, 0)
     pdf.cell(90, 5, curata_text(f"Subansamblul: {data.get('subansamblu','General')}"), 0, 1)
 
-    # Rândul 4: Stare Finală
     pdf.set_x(12)
     pdf.cell(90, 5, "", 0, 0)
     pdf.set_font('Helvetica', 'B', 9)
@@ -328,7 +320,6 @@ def genereaza_pdf(data):
         pdf.multi_cell(0, 5, curata_text(continut or "Nespecificat"))
         pdf.ln(4)
 
-    # Construim structura clar separată pe rânduri:
     linii_simptom_defect = []
     
     cod_err_val = data.get('cod_eroare', 'Niciunul')
@@ -466,7 +457,6 @@ st.sidebar.info("Conexiune optimizată prin ThreadedConnectionPool & Cache.")
 
 st.title("🛠️ NexInd CMMS Dashboard & Predictive")
 
-# TITLURI REVIZUITE
 tab_dashboard, tab_activitati, tab_istoric, tab_predictii, tab_masini, tab_piese, tab_firme, tab_setari = st.tabs([
     "📈 0. Dashboard",
     "📝 1. Activități", 
@@ -580,17 +570,7 @@ with tab_activitati:
                 if match_m['erori']:
                     erori_masina = [e.strip() for e in match_m['erori'].split(",")]
         
-        # SOLUȚIA 1 IMPLEMENTATĂ: Câmp text liber care afișează sugestiile ca indiciu
-        st.markdown("3. **Subansamblu / Componentă**")
-        if subansamblu_list:
-            st.caption(f"💡 Sugestii disponibile: {', '.join(subansamblu_list)}")
-        
-        sel_subansamblu = st.text_input(
-            "Subansamblu", 
-            value="General" if not subansamblu_list else subansamblu_list[0], 
-            key="act_subansamblu_tab1",
-            label_visibility="collapsed"
-        )
+        sel_subansamblu = st.selectbox("3. Alege sau scrie Subansamblul", options=subansamblu_list if subansamblu_list else ["General"], key="act_subansamblu_tab1")
         
         c1, c2 = st.columns(2)
         with c1:
@@ -1022,13 +1002,84 @@ with tab_piese:
         st.info("Nu există piese înregistrate pentru filtrul selectat.")
 
 # ------------------------------------------------------------------------------
-# TAB 6: Firme
+# TAB 6: Firme (Actualizat cu câmpuri de editare și modificare)
 # ------------------------------------------------------------------------------
 with tab_firme:
     st.subheader("📇 Gestiune Firme și Persoane de Contact")
+    
+    with st.expander("➕ Adaugă Firmă Nouă", expanded=False):
+        with st.form("form_adaugare_firma_noua", clear_on_submit=True):
+            fc_1, fc_2 = st.columns(2)
+            with fc_1:
+                in_nume = st.text_input("Nume Firmă *")
+                in_cui = st.text_input("CUI")
+                in_reg = st.text_input("Reg. Com.")
+                in_adresa = st.text_input("Adresă Sediu")
+            with fc_2:
+                in_banca = st.text_input("Bancă")
+                in_cont = st.text_input("Cont / IBAN")
+                in_pers = st.text_input("Nume Persoană Contact")
+                in_email = st.text_input("Email Contact")
+                in_tel = st.text_input("Telefon Contact")
+                
+            if st.form_submit_button("💾 Salvează Firma Nouă", type="primary"):
+                if in_nume.strip():
+                    with db_cursor() as cur_ins_f:
+                        cur_ins_f.execute("""
+                            INSERT INTO firme (nume_firma, cui, reg_com, adresa, banca, cont, nume_persoana, email, telefon)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (in_nume, in_cui, in_reg, in_adresa, in_banca, in_cont, in_pers, in_email, in_tel))
+                    get_firme.clear()
+                    st.success(f"Firma **{in_nume}** a fost adăugată cu succes!")
+                    st.rerun()
+                else:
+                    st.error("Numele firmei este obligatoriu!")
+
+    st.markdown("---")
+    st.subheader("📋 Editare și Modificare Firme Existente")
+    
     firme_db = get_firme()
-    for f in firme_db:
-        st.write(f"- **{f['nume_firma']}** (Contact: {f['nume_persoana']} | Tel: {f['telefon']})")
+    if firme_db:
+        for f in firme_db:
+            fid = f['id']
+            fnume = f['nume_firma'] or ""
+            fcui = f['cui'] or ""
+            freg = f['reg_com'] or ""
+            fadr = f['adresa'] or ""
+            fbanc = f['banca'] or ""
+            fcont = f['cont'] or ""
+            fpers = f['nume_persoana'] or ""
+            femail = f['email'] or ""
+            ftel = f['telefon'] or ""
+            
+            with st.expander(f"🏢 {fnume} (Contact: {fpers or 'Nespecificat'} | Tel: {ftel or 'Nespecificat'})"):
+                with st.form(f"form_mod_firma_{fid}"):
+                    mf_c1, mf_c2 = st.columns(2)
+                    with mf_c1:
+                        mod_nume = st.text_input("Nume Firmă", value=fnume, key=f"mf_nume_{fid}")
+                        mod_cui = st.text_input("CUI", value=fcui, key=f"mf_cui_{fid}")
+                        mod_reg = st.text_input("Reg. Com.", value=freg, key=f"mf_reg_{fid}")
+                        mod_adresa = st.text_input("Adresă", value=fadr, key=f"mf_adr_{fid}")
+                        mod_banca = st.text_input("Bancă", value=fbanc, key=f"mf_banca_{fid}")
+                    with mf_c2:
+                        mod_cont = st.text_input("Cont / IBAN", value=fcont, key=f"mf_cont_{fid}")
+                        mod_pers = st.text_input("Persoană Contact", value=fpers, key=f"mf_pers_{fid}")
+                        mod_email = st.text_input("Email", value=femail, key=f"mf_email_{fid}")
+                        mod_tel = st.text_input("Telefon", value=ftel, key=f"mf_tel_{fid}")
+                    
+                    if st.form_submit_button(f"🔄 Actualizează Date Firmă #{fid}", type="primary"):
+                        with db_cursor() as cur_upd_f:
+                            cur_upd_f.execute("""
+                                UPDATE firme 
+                                SET nume_firma = %s, cui = %s, reg_com = %s, adresa = %s, 
+                                    banca = %s, cont = %s, nume_persoana = %s, email = %s, telefon = %s
+                                WHERE id = %s
+                            """, (mod_nume, mod_cui, mod_reg, mod_adresa, mod_banca, mod_cont, mod_pers, mod_email, mod_tel, fid))
+                        get_firme.clear()
+                        st.success(f"Datele firmei **{mod_nume}** au fost actualizate cu succes!")
+                        st.rerun()
+    else:
+        st.info("Nu există firme înregistrate în baza de date.")
 
 # ------------------------------------------------------------------------------
 # TAB 7: Setări
