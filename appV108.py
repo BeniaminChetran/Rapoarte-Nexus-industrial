@@ -72,16 +72,18 @@ class LegacySSLAdapter(HTTPAdapter):
         kwargs['ssl_context'] = context
         return super().init_poolmanager(*args, **kwargs)
 
+
 def obtine_date_anaf(cui_input):
+    # Păstrăm doar cifrele din CUI și eliminăm eventuale caractere extra sau prefixul RO
     cui_curat = ''.join(filter(str.isdigit, str(cui_input)))
-    if not cui_curat:
-        return None, "Introduceți un CUI valid!"
     
-    # Folosim un API public alternativ de interogare firme bazat pe ANAF/ONRC care nu dă erori de SSL/POST
+    if not cui_curat or len(cui_curat) < 2 or len(cui_curat) > 10:
+        return None, "CUI-ul introdus nu este valid (trebuie să conțină între 2 și 10 cifre)."
+    
     url = f"https://api.openapi.ro/api/companies/{cui_curat}"
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
         'Accept': 'application/json'
     }
     
@@ -95,12 +97,15 @@ def obtine_date_anaf(cui_input):
                 "reg_com": data.get("registration_number", ""),
                 "adresa": data.get("address", "")
             }, None
+        elif response.status_code == 400:
+            return None, "Eroare 400: Serverul a respins cererea. Verifică dacă CUI-ul este corect."
         elif response.status_code == 404:
             return None, "CUI-ul nu a fost găsit în baza de date."
         else:
             return None, f"Eroare de la server (Cod {response.status_code})"
     except Exception as e:
-        return None, f"Eroare la interogare: {e}"
+        return None, f"Eroare la conexiune: {e}"
+
 
 # ------------------------------------------------------------------------------
 # 4. Funcții Optimizate cu Cache Individual & Lazy Loading
