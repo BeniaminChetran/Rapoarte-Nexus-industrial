@@ -80,29 +80,45 @@ def obtine_date_anaf(cui_input):
     if not cui_curat or len(cui_curat) < 2 or len(cui_curat) > 10:
         return None, "Introduceți un CUI valid!"
     
-    # Folosind un serviciu public alternativ cu headere extinse de browser pentru a evita eroarea 403
-    url = f"https://m.firme.info/cui-{cui_curat}/"
-    
+    # Endpoint stabil de la ANAF v6
+    url = "https://webservicesp.anaf.ro/PlatitorTvaRest/api/v6/ws/tva"
+    payload = [{"cui": int(cui_curat), "data": date.today().strftime("%Y-%m-%d")}]
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'ro-RO,ro;q=0.9,en-US;q=0.8,en;q=0.7'
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
     }
     
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        # Folosim requests.post direct
+        response = requests.post(url, json=payload, headers=headers, timeout=8, verify=False)
         
-        if response.status_code == 403:
-            return None, "Eroare 403: Acces blocat de firewall-ul site-ului. Încearcă mai târziu."
-        elif response.status_code == 404:
-            return None, "CUI-ul nu a fost găsit."
-        elif response.status_code == 200:
-            # Dacă reușește conexiunea, poți extrage datele sau folosi o metodă simplificată
-            # Alternativ, dacă vrei date curate direct în format JSON fără blocaje, 
-            # cea mai sigură variantă pe termen lung pentru o aplicație locală este introducerea manuală sau un API dedicat.
-            return None, "Serverul a răspuns, dar structura HTML necesită parsare. Folosește introducerea manuală a datelor."
+        if response.status_code == 200:
+            res_data = response.json()
+            found = res_data.get("found", [])
+            if found:
+                date_f = found[0]
+                date_gen = date_f.get("date_generale", {})
+                adresa_sediu = date_f.get("adresa_sediu_social", {})
+                
+                strada = adresa_sediu.get("sden_strada", "")
+                nr = adresa_sediu.get("sden_numar", "")
+                loc = adresa_sediu.get("sden_localitate", "")
+                jud = adresa_sediu.get("sden_judet", "")
+                adresa_text = f"{loc}, Jud. {jud}, Str. {strada} Nr. {nr}".strip(", ")
+                
+                return {
+                    "nume_firma": date_gen.get("denumire", ""),
+                    "cui": str(date_gen.get("cui", cui_curat)),
+                    "reg_com": date_gen.get("nrRegCom", ""),
+                    "adresa": adresa_text or date_gen.get("adresa", "")
+                }, None
+            else:
+                return None, "CUI-ul nu a fost găsit în registrul ANAF."
         else:
-            return None, f"Eroare de la server (Cod {response.status_code})"
+            return None, f"Serverul ANAF a răspuns cu codul {response.status_code}."
+            
+    except requests.exceptions.ConnectionError:
+        return None, "Eroare de rețea/DNS: Nu s-a putut stabili conexiunea cu serverul."
     except Exception as e:
         return None, f"Eroare la conexiune: {e}"
 
