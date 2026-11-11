@@ -1120,9 +1120,37 @@ with tab_firme:
         st.info("Nu există firme înregistrate în baza de date.")
 
 # ------------------------------------------------------------------------------
-# TAB 7: Setări
+# TAB 7: Setări (Complet Restaurat)
 # ------------------------------------------------------------------------------
 with tab_setari:
     st.subheader("⚙️ Setări Aplicație & Conectare")
     current_setari = get_setari()
-    st.text(f"Firma Curentă Setată: {current_setari['nume_firma_mea']}")
+    
+    with st.form("form_setari_complet"):
+        sc1, sc2 = st.columns(2)
+        with sc1:
+            s_nume = st.text_input("Nume Firma Ta", value=current_setari.get('nume_firma_mea', 'Nexus Industrial SRL'))
+            s_cui = st.text_input("CUI", value=current_setari.get('cui_mea', ''))
+            s_reg = st.text_input("Nr. Reg. Com.", value=current_setari.get('reg_com_mea', ''))
+            s_adresa = st.text_input("Adresă", value=current_setari.get('adresa_mea', ''))
+            s_banca = st.text_input("Bancă", value=current_setari.get('banca_mea', ''))
+            s_iban = st.text_input("IBAN (Cont)", value=current_setari.get('iban_mea', ''))
+            s_swep = st.text_input("SWEP (SWIFT)", value=current_setari.get('swep_mea', ''))
+        with sc2:
+            s_srv = st.text_input("SMTP Server", value=current_setari.get('smtp_server', 'smtp.gmail.com'))
+            s_prt = st.number_input("SMTP Port", value=int(current_setari.get('smtp_port', 587)) if current_setari.get('smtp_port') else 587)
+            s_usr = st.text_input("User Gmail", value=current_setari.get('smtp_user', ''))
+            s_pwd = st.text_input("App Password (sau folosiți st.secrets)", type="password", value=current_setari.get('smtp_pass', ''))
+            s_sheet = st.text_input("Google Sheet URL", value=current_setari.get('google_sheet_url', ''))
+            s_email_teh = st.text_input("E-mail Tehnician", value=current_setari.get('email_tehnician', ''))
+        
+        if st.form_submit_button("💾 Salvează Setările", type="primary"):
+            with db_cursor() as c:
+                c.execute("DELETE FROM setari")
+                c.execute("""
+                    INSERT INTO setari (nume_firma_mea, cui_mea, reg_com_mea, adresa_mea, banca_mea, iban_mea, swep_mea, smtp_server, smtp_port, smtp_user, smtp_pass, google_sheet_url, email_tehnician) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (s_nume, s_cui, s_reg, s_adresa, s_banca, s_iban, s_swep, s_srv, s_prt, s_usr, s_pwd, s_sheet, s_email_teh))
+            get_setari.clear()
+            st.success("Setările au fost salvate cu succes!")
+            st.rerun()
