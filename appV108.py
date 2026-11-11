@@ -419,13 +419,13 @@ st.title("🛠️ NexInd CMMS Dashboard & Predictive")
 
 tab_dashboard, tab_activitati, tab_optimizare, tab_predictii, tab_masini, tab_piese, tab_firme, tab_rapoarte, tab_setari = st.tabs([
     "📈 0. Dashboard",
-    "📝 1. Activități", 
-    "📊 2. Documentații / Proceduri", 
-    "🔮 3. Predicții",
-    "🏭 4. Mașini", 
-    "🔧 5. Piese", 
-    "📇 6. Firme",
-    "📋 7. Istoric",
+    "🔮 1. Predicții",
+    "📝 2. Activități", 
+    "📋 3. Istoric",
+    "📊 4. Documentații / Proceduri", 
+    "🏭 5. Mașini", 
+    "🔧 6. Piese", 
+    "📇 7. Firme",
     "⚙️ 8. Setări"
 ])
 
