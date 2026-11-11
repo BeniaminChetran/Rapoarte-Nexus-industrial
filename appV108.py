@@ -670,7 +670,7 @@ with tab_activitati:
                         st.session_state["ultimul_id_salvat"] = rid_nou
                         date_pdf_pre = {
                             "id": rid_nou, "client": sel_firma, "masina": sel_masina, "subansamblu": sel_subansamblu,
-                            "durata": duranata_min := durata_min, "cod_eroare": cod_eroare, "stare_finala": stare_fin,
+                            "durata": duranata_min, "cod_eroare": cod_eroare, "stare_finala": stare_fin,
                             "tip_masina": masina_selectata_info.get('tip_masina', '') if masina_selectata_info else '',
                             "serie": masina_selectata_info.get('serie', '') if masina_selectata_info else '',
                             "an_fabricatie": masina_selectata_info.get('an_fabricatie', '') if masina_selectata_info else '',
