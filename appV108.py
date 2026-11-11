@@ -1115,3 +1115,4 @@ with tab_setari:
     st.subheader("⚙️ Setări Aplicație & Conectare")
     current_setari = get_setari()
     st.text(f"Firma Curentă Setată: {current_setari['nume_firma_mea']}")
+    
