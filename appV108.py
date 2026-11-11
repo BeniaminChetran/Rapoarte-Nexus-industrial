@@ -540,7 +540,7 @@ with tab_dashboard:
             st.plotly_chart(fig_utilaje, use_container_width=True, key="grafic_top_utilaje_dashboard")
 
 # ------------------------------------------------------------------------------
-# TAB 1: Activități Zilnice (Cu Blocare Salvare & Buton Activitate Nouă)
+# TAB 1: Activități Zilnice (Cu reîmprospătare forțată a mașinilor)
 # ------------------------------------------------------------------------------
 with tab_activitati:
     st.subheader("📝 Activități Zilnice & Raport Intervenție Tehnică")
@@ -557,7 +557,6 @@ with tab_activitati:
     if not firme_activ:
         st.warning("⚠️ Adăugați cel puțin o firmă în Tabul de Firme.")
     else:
-        # Buton pentru resetare și introducere activitate nouă
         if st.session_state["raport_salvat"]:
             if st.button("➕ Introdu o activitate nouă", type="primary", key="btn_reset_activitate_tab1"):
                 st.session_state["raport_salvat"] = False
@@ -566,145 +565,27 @@ with tab_activitati:
                     del st.session_state["df_piese_editor"]
                 st.rerun()
 
-        sel_firma = st.selectbox("1. Alege Firma la care lucrezi", options=firme_activ, key="act_firma_principal_tab1", disabled=st.session_state["raport_salvat"])
+        col_f1, col_f2 = st.columns([4, 1])
+        with col_f1:
+            sel_firma = st.selectbox("1. Alege Firma la care lucrezi", options=firme_activ, key="act_firma_principal_tab1", disabled=st.session_state["raport_salvat"])
+        with col_f2:
+            st.write("")
+            st.write("")
+            # Buton utilitar pentru a goli cache-ul mașinilor instant
+            if st.button("🔄 Sync Mașini", help="Apasă dacă tocmai ai adăugat o mașină și nu apare în listă"):
+                get_masini.clear()
+                get_masini_firma.clear()
+                st.rerun()
+
         firma_obj = firme_dict_obj[sel_firma]
         persoane_contact_firma = [firma_obj['nume_persoana']] if firma_obj['nume_persoana'] else []
         email_client_destinatar = firma_obj['email'] or ""
         
+        # Preluăm mașinile firmei (cache-ul fiind curățat la nevoie prin butonul de mai sus)
         masini_firma_db = get_masini_firma(firma_obj['id'])
         masini_firma_nume = [m['denumire'] for m in masini_firma_db]
         
         sel_masina = st.selectbox("2. Alege Mașina / Echipamentul", options=masini_firma_nume if masini_firma_nume else ["Nicio mașină"], key="act_masina_tab1", disabled=st.session_state["raport_salvat"])
-        
-        subansamblu_list = []
-        erori_masina = []
-        masina_selectata_info = None
-        if masini_firma_db and sel_masina != "Nicio mașină":
-            match_m = next((m for m in masini_firma_db if m['denumire'] == sel_masina), None)
-            if match_m:
-                masina_selectata_info = match_m
-                if match_m['subansambluri']:
-                    subansamblu_list = [s.strip() for s in match_m['subansambluri'].split(",")]
-                if match_m['erori']:
-                    erori_masina = [e.strip() for e in match_m['erori'].split(",")]
-        
-        sel_subansamblu = st.selectbox("3. Alege sau scrie Subansamblul", options=subansamblu_list if subansamblu_list else ["General"], key="act_subansamblu_tab1", disabled=st.session_state["raport_salvat"])
-        
-        c1, c2 = st.columns(2)
-        with c1:
-            titlu_lucrare = st.text_input("Titlu Lucrare", value="Intervenție tehnică", key="act_titlu_tab1", disabled=st.session_state["raport_salvat"])
-            simptom = st.text_area("Simptom Inițial Reclamat", key="act_simptom_tab1", disabled=st.session_state["raport_salvat"])
-            defect = st.text_area("Defect Constatat", key="act_defect_tab1", disabled=st.session_state["raport_salvat"])
-            cod_eroare = st.selectbox("Cod Eroare", options=["Niciunul"] + erori_masina, key="act_cod_eroare_tab1", disabled=st.session_state["raport_salvat"])
-        with c2:
-            solutie = st.text_area("Soluție / Lucrări Executate", key="act_solutie_tab1", disabled=st.session_state["raport_salvat"])
-            durata_min = st.number_input("Durată Intervenție (minute)", value=60, step=15, key="act_durata_tab1", disabled=st.session_state["raport_salvat"])
-            tip_interventie = st.selectbox("Tip Intervenție", ["reparatie", "diagnostic", "consultanta"], key="act_tip_interv_tab1", disabled=st.session_state["raport_salvat"])
-            stare_fin = st.selectbox("Stare Finală Echipament", ["Funcțională", "În testare", "Oprită / Necesar piese"], key="act_stare_fin_tab1", disabled=st.session_state["raport_salvat"])
-            
-        st.markdown("##### 🔧 Gestiune Piese (Utilizate / Înlocuite / Necesare)")
-        
-        if "df_piese_editor" not in st.session_state:
-            st.session_state["df_piese_editor"] = pd.DataFrame(columns=["Piesa", "Cantitate", "Tip"])
-
-        piese_catalog_rows = get_piese()
-        piese_catalog = [p['denumire'] for p in piese_catalog_rows]
-
-        edited_df = st.data_editor(
-            st.session_state["df_piese_editor"],
-            num_rows="dynamic",
-            column_config={
-                "Piesa": st.column_config.SelectboxColumn("Piesă", options=piese_catalog, required=True),
-                "Cantitate": st.column_config.NumberColumn("Cantitate", min_value=1, default=1),
-                "Tip": st.column_config.SelectboxColumn("Tip / Status", options=["Utilizata", "Inlocuita", "Necesara", "De Comandat"], required=True)
-            },
-            key="editor_piese_activitati_tab1",
-            disabled=st.session_state["raport_salvat"]
-        )
-            
-        c_tech1, c_tech2 = st.columns(2)
-        tehnician_nume = c_tech1.text_input("Nume Tehnician", value="Tehnician Nexus", key="act_tehnician_tab1", disabled=st.session_state["raport_salvat"])
-        verificator_nume = c_tech2.selectbox("Verificat / Recepționat de", options=persoane_contact_firma if persoane_contact_firma else ["Niciun contact"], key="act_verificator_tab1", disabled=st.session_state["raport_salvat"])
-        
-        optimizari = st.text_area("Recomandări Tehnice", key="act_recomandari_tab1", disabled=st.session_state["raport_salvat"])
-
-        col_b1, col_b2, col_b3 = st.columns(3)
-        with col_b1:
-            if not st.session_state["raport_salvat"]:
-                if st.button("💾 Salvează Activitatea în DB", type="primary", key="btn_salveaza_activitate_tab1"):
-                    piese_valide = edited_df.dropna(subset=["Piesa"]).to_dict(orient="records")
-                    
-                    are_piese_necesare = any(p.get("Tip") in ["Necesara", "De Comandat"] for p in piese_valide)
-
-                    if stare_fin == "Funcțională":
-                        stare_calculata_masina = "Activă"
-                    elif stare_fin in ["Oprită / Necesar piese", "În testare"] and are_piese_necesare:
-                        stare_calculata_masina = "În așteptare piese"
-                    else:
-                        stare_calculata_masina = "Nefuncțională / Oprită"
-
-                    with db_cursor() as c:
-                        c.execute("""
-                            INSERT INTO reparatii (firma, masina, subansamblu, defect, cod_eroare, piese_json, titlu, simptom, solutie, stare_finala, durata, optimizari, tehnician, verificator, tip_interventie) 
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                            RETURNING id
-                        """, (sel_firma, sel_masina, sel_subansamblu, defect, cod_eroare, json.dumps(piese_valide, ensure_ascii=False), titlu_lucrare, simptom, solutie, stare_fin, durata_min, optimizari, tehnician_nume, verificator_nume, tip_interventie))
-                        res_ins = c.fetchone()
-                        rid_nou = res_ins['id'] if res_ins else None
-
-                        if stare_calculata_masina == "Activă":
-                            c.execute("""
-                                UPDATE masini SET stare_utilaj = %s, data_inceput_oprire = NULL, motiv_oprire = NULL 
-                                WHERE denumire = %s
-                            """, (stare_calculata_masina, sel_masina))
-                        else:
-                            c.execute("""
-                                UPDATE masini SET stare_utilaj = %s, data_inceput_oprire = CURRENT_DATE, motiv_oprire = %s 
-                                WHERE denumire = %s
-                            """, (stare_calculata_masina, defect or stare_fin, sel_masina))
-
-                    get_masini.clear()
-                    get_masini_firma.clear()
-
-                    if rid_nou:
-                        st.session_state["ultimul_id_salvat"] = rid_nou
-                        date_pdf_pre = {
-                            "id": rid_nou, "client": sel_firma, "masina": sel_masina, "subansamblu": sel_subansamblu,
-                            "durata": duranata_min, "cod_eroare": cod_eroare, "stare_finala": stare_fin,
-                            "tip_masina": masina_selectata_info.get('tip_masina', '') if masina_selectata_info else '',
-                            "serie": masina_selectata_info.get('serie', '') if masina_selectata_info else '',
-                            "an_fabricatie": masina_selectata_info.get('an_fabricatie', '') if masina_selectata_info else '',
-                            "piese_json": [{"piesa": p.get("Piesa"), "cantitate": p.get("Cantitate"), "tip": p.get("Tip")} for p in piese_valide],
-                            "titlu": titlu_lucrare, "simptom": simptom, "defect": defect, "solutie": solutie,
-                            "optimizari": optimizari, "tehnician": tehnician_nume, "verificator": verificator_nume, "data": datetime.now(),
-                            "tip_interventie": tip_interventie
-                        }
-                        pdf_bytes_gen = genereaza_pdf(date_pdf_pre)
-
-                        ore_calc = int(durata_min // 60)
-                        minute_calc = int(durata_min % 60)
-                        format_durata_text = f"{ore_calc} ore {minute_calc} minute" if ore_calc > 0 else f"{minute_calc} minute"
-
-                        payload_sheet = {
-                            "status": "nefacturat", "id": str(rid_nou), "data": datetime.now().strftime("%Y-%m-%d"),
-                            "tip_interventie": tip_interventie, "ora": format_durata_text, "firma": str(sel_firma), "masina": str(sel_masina),
-                            "subansamblu": str(sel_subansamblu or "General"),
-                            "piese utilizate": ", ".join([f"{p.get('Piesa')} ({p.get('Cantitate')})" for p in piese_valide if p.get('Tip') in ['Utilizata', 'Inlocuita']]),
-                            "necesar piese": ", ".join([f"{p.get('Piesa')} ({p.get('Cantitate')})" for p in piese_valide if p.get('Tip') in ['Necesara', 'De Comandat']]),
-                            "verificator": str(verificator_nume or ""), "tehnician": str(tehnician_nume or "")
-                        }
-
-                        threading.Thread(
-                            target=background_sync_task,
-                            args=(payload_sheet, email_client_destinatar, f"Raport #{rid_nou} - {sel_firma}", f"Vă atașăm raportul #{rid_nou}.", pdf_bytes_gen, f"Raport_{rid_nou}.pdf"),
-                            daemon=True
-                        ).start()
-
-                    st.session_state["raport_salvat"] = True
-                    st.success(f"Activitatea a fost salvată! Starea mașinii a fost setată automat pe: **{stare_calculata_masina}**")
-                    st.rerun()
-            else:
-                st.info("🔒 Activitatea a fost salvată. Apăsați butonul de deasupra pentru o activitate nouă.")
 
 # ------------------------------------------------------------------------------
 # TAB 2: Istoric Intervenții
